@@ -1,0 +1,166 @@
+name: 'AutoQA'
+description: 'Automated post-deploy QA: Playwright crawler + axe accessibility + Schemathesis API fuzzing + OWASP ZAP security scan'
+branding:
+  icon: 'shield'
+  color: 'green'
+
+inputs:
+  url:
+    description: 'Base production URL'
+    required: true
+  auth-url:
+    description: 'API auth endpoint path for Bearer token (e.g., /api/Users/AuthenticateByName)'
+    default: ''
+  auth-body:
+    description: 'JSON body for auth request'
+    default: ''
+
+  crawler-enabled:
+    description: 'Run Playwright crawler'
+    default: 'true'
+  crawler-username:
+    description: 'Form login username (empty = skip form login)'
+    default: ''
+  crawler-password:
+    description: 'Form login password'
+    default: ''
+  crawler-login-url:
+    description: 'Login page path'
+    default: '/login'
+  crawler-login-selector-username:
+    description: 'CSS selector for username input'
+    default: 'input[type="text"], input[type="email"]'
+  crawler-login-selector-password:
+    description: 'CSS selector for password input'
+    default: 'input[type="password"]'
+  crawler-login-selector-submit:
+    description: 'CSS selector for submit button'
+    default: 'button[type="submit"], button'
+  crawler-seed-pages:
+    description: 'Comma-separated seed paths to start crawling from'
+    default: '/'
+  crawler-max-pages:
+    description: 'Maximum pages to crawl'
+    default: '50'
+  crawler-wait-ms:
+    description: 'Wait time between pages in milliseconds'
+    default: '2000'
+  crawler-exclude-urls:
+    description: 'Comma-separated URL patterns to ignore in error reporting'
+    default: ''
+  crawler-fail-on-violations:
+    description: 'Exit non-zero on critical a11y violations, JS errors, or broken links'
+    default: 'true'
+
+  schemathesis-enabled:
+    description: 'Run Schemathesis API fuzzing'
+    default: 'false'
+  openapi-url:
+    description: 'OpenAPI spec path (e.g., /api/openapi.json)'
+    default: ''
+  schemathesis-exclude-paths:
+    description: 'Comma-separated API paths to exclude from fuzzing'
+    default: ''
+  schemathesis-exclude-checks:
+    description: 'Comma-separated Schemathesis checks to exclude'
+    default: 'ignored_auth,unsupported_method'
+
+  zap-enabled:
+    description: 'Run OWASP ZAP security scan'
+    default: 'false'
+
+outputs:
+  report-path:
+    description: 'Directory containing all reports'
+    value: '/tmp/qa-reports'
+  pages-visited:
+    description: 'Number of pages crawled'
+    value: ${{ steps.crawler.outputs.pages-visited }}
+  js-errors:
+    description: 'Number of JS errors found'
+    value: ${{ steps.crawler.outputs.js-errors }}
+  axe-violations:
+    description: 'Number of accessibility violations found'
+    value: ${{ steps.crawler.outputs.axe-violations }}
+  broken-links:
+    description: 'Number of broken links found'
+    value: ${{ steps.crawler.outputs.broken-links }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Create reports directory
+      shell: bash
+      run: mkdir -p /tmp/qa-reports
+
+    - name: Obtain auth token
+      if: inputs.auth-url != ''
+      shell: bash
+      run: bash ${{ github.action_path }}/scripts/auth.sh
+      env:
+        QA_AUTH_URL: ${{ inputs.url }}${{ inputs.auth-url }}
+        QA_AUTH_BODY: ${{ inputs.auth-body }}
+
+    - name: Install Schemathesis
+      if: inputs.schemathesis-enabled == 'true'
+      shell: bash
+      run: pip install schemathesis
+
+    - name: Schemathesis API fuzzing
+      if: inputs.schemathesis-enabled == 'true'
+      continue-on-error: true
+      shell: bash
+      run: bash ${{ github.action_path }}/scripts/run-schemathesis.sh
+      env:
+        QA_BASE_URL: ${{ inputs.url }}
+        QA_OPENAPI_URL: ${{ inputs.openapi-url }}
+        QA_SCHEMATHESIS_EXCLUDE_PATHS: ${{ inputs.schemathesis-exclude-paths }}
+        QA_SCHEMATHESIS_EXCLUDE_CHECKS: ${{ inputs.schemathesis-exclude-checks }}
+
+    - name: ZAP security scan
+      if: inputs.zap-enabled == 'true'
+      continue-on-error: true
+      shell: bash
+      run: bash ${{ github.action_path }}/scripts/run-zap.sh
+      env:
+        QA_BASE_URL: ${{ inputs.url }}
+
+    - name: Setup Node.js
+      if: inputs.crawler-enabled == 'true'
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+
+    - name: Install crawler dependencies
+      if: inputs.crawler-enabled == 'true'
+      shell: bash
+      run: cd ${{ github.action_path }}/tools/crawler && npm ci && npx playwright install chromium
+
+    - name: Run crawler
+      id: crawler
+      if: inputs.crawler-enabled == 'true'
+      continue-on-error: true
+      shell: bash
+      run: node ${{ github.action_path }}/tools/crawler/crawl.js 2>&1 | tee /tmp/qa-reports/crawler.txt
+      env:
+        CRAWL_URL: ${{ inputs.url }}
+        CRAWL_USERNAME: ${{ inputs.crawler-username }}
+        CRAWL_PASSWORD: ${{ inputs.crawler-password }}
+        CRAWL_LOGIN_URL: ${{ inputs.crawler-login-url }}
+        CRAWL_LOGIN_SELECTOR_USERNAME: ${{ inputs.crawler-login-selector-username }}
+        CRAWL_LOGIN_SELECTOR_PASSWORD: ${{ inputs.crawler-login-selector-password }}
+        CRAWL_LOGIN_SELECTOR_SUBMIT: ${{ inputs.crawler-login-selector-submit }}
+        CRAWL_SEED_PAGES: ${{ inputs.crawler-seed-pages }}
+        CRAWL_MAX_PAGES: ${{ inputs.crawler-max-pages }}
+        CRAWL_WAIT_MS: ${{ inputs.crawler-wait-ms }}
+        CRAWL_EXCLUDE_URLS: ${{ inputs.crawler-exclude-urls }}
+        CRAWL_FAIL_ON_VIOLATIONS: ${{ inputs.crawler-fail-on-violations }}
+
+    - name: Upload QA reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: autoqa-reports
+        path: /tmp/qa-reports/
+        retention-days: 7
+        if-no-files-found: ignore
