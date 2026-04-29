@@ -74,6 +74,7 @@ function extractLinks(page) {
 
 async function crawlPage(page, path) {
   if (visited.has(path) || visited.size >= MAX_PAGES) return;
+  if (isExcluded(path)) return;
   visited.add(path);
 
   const pageErrors = [];
@@ -144,7 +145,7 @@ async function crawlPage(page, path) {
 
     const links = await extractLinks(page);
     for (const link of links) {
-      if (!visited.has(link) && !queue.includes(link)) {
+      if (!visited.has(link) && !queue.includes(link) && !isExcluded(link)) {
         queue.push(link);
       }
     }
