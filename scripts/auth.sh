@@ -8,8 +8,11 @@ fi
 
 echo "Authenticating against ${QA_AUTH_URL}..."
 
+BASE_ORIGIN=$(echo "${QA_AUTH_URL}" | grep -oE '^https?://[^/]+')
+
 TOKEN=$(curl -sf -X POST "${QA_AUTH_URL}" \
   -H "Content-Type: application/json" \
+  -H "Origin: ${BASE_ORIGIN}" \
   -d "${QA_AUTH_BODY}" \
   | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('AccessToken', d.get('access_token', d.get('token', ''))))")
 
