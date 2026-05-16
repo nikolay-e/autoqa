@@ -71,7 +71,7 @@ async function login(page, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
       await page.goto(`${BASE_URL}${LOGIN_URL}`, {
-        waitUntil: "networkidle",
+        waitUntil: "load",
         timeout: 30000,
       });
       await page.fill(LOGIN_SELECTOR_USERNAME, USERNAME);
@@ -208,7 +208,7 @@ async function crawlPage(page, path) {
 
   try {
     const response = await page.goto(`${BASE_URL}${path}`, {
-      waitUntil: "networkidle",
+      waitUntil: "load",
       timeout: 30000,
     });
 
