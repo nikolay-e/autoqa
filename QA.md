@@ -4,17 +4,17 @@ Project-specific QA methodology learnings for this repo. Generic patterns live i
 
 ## Applicability matrix
 
-| Standard QA step | Applies here? | Notes |
-|---|---|---|
-| CI status / lint | ✅ | `gh run list --workflow=ci.yml` |
-| CD / ArgoCD | ❌ | This is a GitHub Action, not a deployed service |
-| K8s logs / events | ❌ | No deployment |
-| Backend smoke | ❌ | No backend |
-| Browser QA (Playwright MCP) on prod | ❌ | No deployed UI |
-| autoqa self-test | ✅ | The action's `ci.yml` runs `uses: ./` against example.com — this IS the autoqa pipeline running on itself |
-| SonarCloud | ❌ | No project configured for `nikolay-e_autoqa` (verified 2026-05-16) |
-| Code review | ✅ | `git diff <prev-release>..HEAD` |
-| Test hygiene | n/a | No unit/integration tests; the self-test job is the integration test |
+| Standard QA step                    | Applies here? | Notes                                                                                                     |
+| ----------------------------------- | ------------- | --------------------------------------------------------------------------------------------------------- |
+| CI status / lint                    | ✅            | `gh run list --workflow=ci.yml`                                                                           |
+| CD / ArgoCD                         | ❌            | This is a GitHub Action, not a deployed service                                                           |
+| K8s logs / events                   | ❌            | No deployment                                                                                             |
+| Backend smoke                       | ❌            | No backend                                                                                                |
+| Browser QA (Playwright MCP) on prod | ❌            | No deployed UI                                                                                            |
+| autoqa self-test                    | ✅            | The action's `ci.yml` runs `uses: ./` against example.com — this IS the autoqa pipeline running on itself |
+| SonarCloud                          | ❌            | No project configured for `nikolay-e_autoqa` (verified 2026-05-16)                                        |
+| Code review                         | ✅            | `git diff <prev-release>..HEAD`                                                                           |
+| Test hygiene                        | n/a           | No unit/integration tests; the self-test job is the integration test                                      |
 
 ## Self-test target choice
 
