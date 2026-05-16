@@ -28,10 +28,10 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./
         with:
-          url: https://nikolay-eremeev.com
-          crawler-seed-pages: "/,/ru"
-          crawler-max-pages: "5"
-          crawler-wait-ms: "1000"
+          url: https://example.com
+          crawler-seed-pages: "/"
+          crawler-max-pages: "3"
+          crawler-wait-ms: "500"
           baseline-enabled: "true"
           observatory-enabled: "true"
           observatory-fail-grade: "F"
