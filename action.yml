@@ -130,7 +130,7 @@ runs:
     - name: Restore crawler baseline
       id: baseline-restore
       if: inputs.crawler-enabled == 'true' && inputs.baseline-enabled == 'true'
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: /tmp/qa-reports/baseline
         key: autoqa-baseline-${{ github.repository }}-${{ github.event.pull_request.base.ref || github.ref_name }}-${{ github.sha }}
@@ -180,7 +180,7 @@ runs:
 
     - name: Setup Node.js
       if: inputs.crawler-enabled == 'true' || inputs.authz-enabled == 'true' || inputs.argos-enabled == 'true'
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
       with:
         node-version: "22"
 
@@ -221,7 +221,7 @@ runs:
 
     - name: Save crawler baseline
       if: inputs.crawler-enabled == 'true' && inputs.baseline-enabled == 'true' && github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'master')
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: /tmp/qa-reports/baseline
         key: autoqa-baseline-${{ github.repository }}-${{ github.ref_name }}-${{ github.sha }}
@@ -247,7 +247,7 @@ runs:
 
     - name: Upload QA reports
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: autoqa-reports
         path: /tmp/qa-reports/
