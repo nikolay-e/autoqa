@@ -1,97 +1,143 @@
-name: 'AutoQA'
-description: 'Automated post-deploy QA: Playwright crawler + axe accessibility + Schemathesis API fuzzing + OWASP ZAP security scan'
+name: "AutoQA"
+description: "Automated post-deploy QA: Playwright crawler + axe accessibility + Schemathesis API fuzzing + OWASP ZAP security scan + Mozilla Observatory + visual regression + AuthZ matrix + baseline diff"
 branding:
-  icon: 'shield'
-  color: 'green'
+  icon: "shield"
+  color: "green"
 
 inputs:
   url:
-    description: 'Base production URL'
+    description: "Base production URL"
     required: true
   auth-url:
-    description: 'API auth endpoint path for Bearer token (e.g., /api/Users/AuthenticateByName)'
-    default: ''
+    description: "API auth endpoint path for Bearer token (e.g., /api/Users/AuthenticateByName)"
+    default: ""
   auth-body:
-    description: 'JSON body for auth request'
-    default: ''
+    description: "JSON body for auth request"
+    default: ""
 
   crawler-enabled:
-    description: 'Run Playwright crawler'
-    default: 'true'
+    description: "Run Playwright crawler"
+    default: "true"
   crawler-username:
-    description: 'Form login username (empty = skip form login)'
-    default: ''
+    description: "Form login username (empty = skip form login)"
+    default: ""
   crawler-password:
-    description: 'Form login password'
-    default: ''
+    description: "Form login password"
+    default: ""
   crawler-login-url:
-    description: 'Login page path'
-    default: '/login'
+    description: "Login page path"
+    default: "/login"
   crawler-login-selector-username:
-    description: 'CSS selector for username input'
+    description: "CSS selector for username input"
     default: 'input[type="text"], input[type="email"]'
   crawler-login-selector-password:
-    description: 'CSS selector for password input'
+    description: "CSS selector for password input"
     default: 'input[type="password"]'
   crawler-login-selector-submit:
-    description: 'CSS selector for submit button'
+    description: "CSS selector for submit button"
     default: 'button[type="submit"], button'
   crawler-seed-pages:
-    description: 'Comma-separated seed paths to start crawling from'
-    default: '/'
+    description: "Comma-separated seed paths to start crawling from"
+    default: "/"
   crawler-max-pages:
-    description: 'Maximum pages to crawl'
-    default: '50'
+    description: "Maximum pages to crawl"
+    default: "50"
   crawler-wait-ms:
-    description: 'Wait time between pages in milliseconds'
-    default: '2000'
+    description: "Wait time between pages in milliseconds"
+    default: "2000"
   crawler-exclude-urls:
-    description: 'Comma-separated URL patterns to ignore in error reporting'
-    default: ''
-  crawler-fail-on-violations:
-    description: 'Exit non-zero on critical a11y violations, JS errors, or broken links'
-    default: 'true'
+    description: "Comma-separated URL patterns to ignore in error reporting"
+    default: ""
+
+  baseline-enabled:
+    description: "Diff crawler findings against cached baseline; fail PRs only on NEW findings (push to main updates baseline)"
+    default: "true"
 
   schemathesis-enabled:
-    description: 'Run Schemathesis API fuzzing'
-    default: 'false'
+    description: "Run Schemathesis API fuzzing"
+    default: "false"
   openapi-url:
-    description: 'OpenAPI spec path (e.g., /api/openapi.json)'
-    default: ''
+    description: "OpenAPI spec path (e.g., /api/openapi.json)"
+    default: ""
   schemathesis-exclude-paths:
-    description: 'Comma-separated API paths to exclude from fuzzing'
-    default: ''
+    description: "Comma-separated API paths to exclude from fuzzing"
+    default: ""
   schemathesis-exclude-checks:
-    description: 'Comma-separated Schemathesis checks to exclude'
-    default: 'ignored_auth,unsupported_method'
+    description: "Comma-separated Schemathesis checks to exclude"
+    default: "ignored_auth,unsupported_method"
 
   zap-enabled:
-    description: 'Run OWASP ZAP security scan'
-    default: 'false'
+    description: "Run OWASP ZAP security scan"
+    default: "false"
+
+  observatory-enabled:
+    description: "Run MDN HTTP Observatory security-headers scan"
+    default: "false"
+  observatory-fail-grade:
+    description: "Fail if Observatory grade is worse than this (A+ A A- B+ B B- C+ C C- D+ D D- F)"
+    default: "B"
+
+  argos-enabled:
+    description: "Capture screenshots at 1440x900 and 375x667 viewports and upload to Argos for visual regression"
+    default: "false"
+  argos-token:
+    description: "Argos CI repository token (set as a secret in the downstream workflow)"
+    default: ""
+
+  authz-enabled:
+    description: "Run AuthZ two-token matrix (BOLA / OWASP API1:2023) against resource paths owned by user A"
+    default: "false"
+  authz-user-a-body:
+    description: "JSON body for user A login (sent to auth-url)"
+    default: ""
+  authz-user-b-body:
+    description: "JSON body for user B login (sent to auth-url)"
+    default: ""
+  authz-resource-paths:
+    description: "Comma-separated resource paths owned by user A (e.g., /api/notes/1,/api/notes/2). For each: user A must get 2xx, user B must get 401/403/404, no-auth must get 401/403/404."
+    default: ""
 
 outputs:
   report-path:
-    description: 'Directory containing all reports'
-    value: '/tmp/qa-reports'
+    description: "Directory containing all reports"
+    value: "/tmp/qa-reports"
   pages-visited:
-    description: 'Number of pages crawled'
+    description: "Number of pages crawled"
     value: ${{ steps.crawler.outputs.pages-visited }}
   js-errors:
-    description: 'Number of JS errors found'
+    description: "Number of JS errors found"
     value: ${{ steps.crawler.outputs.js-errors }}
   axe-violations:
-    description: 'Number of accessibility violations found'
+    description: "Number of accessibility violations found"
     value: ${{ steps.crawler.outputs.axe-violations }}
   broken-links:
-    description: 'Number of broken links found'
+    description: "Number of broken links found"
     value: ${{ steps.crawler.outputs.broken-links }}
+  csp-violations:
+    description: "Number of CSP violations captured"
+    value: ${{ steps.crawler.outputs.csp-violations }}
+  mixed-content:
+    description: "Number of mixed-content requests captured"
+    value: ${{ steps.crawler.outputs.mixed-content }}
 
 runs:
-  using: 'composite'
+  using: "composite"
   steps:
     - name: Create reports directory
       shell: bash
-      run: mkdir -p /tmp/qa-reports
+      run: mkdir -p /tmp/qa-reports /tmp/qa-reports/baseline /tmp/qa-reports/screenshots
+
+    - name: Restore crawler baseline
+      id: baseline-restore
+      if: inputs.crawler-enabled == 'true' && inputs.baseline-enabled == 'true'
+      uses: actions/cache/restore@v4
+      with:
+        path: /tmp/qa-reports/baseline
+        key: autoqa-baseline-${{ github.repository }}-${{ github.event.pull_request.base.ref || github.ref_name }}-${{ github.sha }}
+        restore-keys: |
+          autoqa-baseline-${{ github.repository }}-${{ github.event.pull_request.base.ref || github.ref_name }}-
+          autoqa-baseline-${{ github.repository }}-main-
+          autoqa-baseline-${{ github.repository }}-master-
 
     - name: Obtain auth token
       if: inputs.auth-url != ''
@@ -108,7 +154,6 @@ runs:
 
     - name: Schemathesis API fuzzing
       if: inputs.schemathesis-enabled == 'true'
-      continue-on-error: true
       shell: bash
       run: bash ${{ github.action_path }}/scripts/run-schemathesis.sh
       env:
@@ -119,17 +164,25 @@ runs:
 
     - name: ZAP security scan
       if: inputs.zap-enabled == 'true'
-      continue-on-error: true
       shell: bash
       run: bash ${{ github.action_path }}/scripts/run-zap.sh
       env:
         QA_BASE_URL: ${{ inputs.url }}
 
+    - name: Mozilla HTTP Observatory scan
+      if: inputs.observatory-enabled == 'true'
+      shell: bash
+      run: bash ${{ github.action_path }}/scripts/run-observatory.sh
+      env:
+        QA_BASE_URL: ${{ inputs.url }}
+        QA_OBSERVATORY_ENABLED: ${{ inputs.observatory-enabled }}
+        QA_OBSERVATORY_FAIL_GRADE: ${{ inputs.observatory-fail-grade }}
+
     - name: Setup Node.js
-      if: inputs.crawler-enabled == 'true'
+      if: inputs.crawler-enabled == 'true' || inputs.authz-enabled == 'true' || inputs.argos-enabled == 'true'
       uses: actions/setup-node@v4
       with:
-        node-version: '22'
+        node-version: "22"
 
     - name: Install crawler dependencies
       if: inputs.crawler-enabled == 'true'
@@ -139,7 +192,6 @@ runs:
     - name: Run crawler
       id: crawler
       if: inputs.crawler-enabled == 'true'
-      continue-on-error: true
       shell: bash
       run: node ${{ github.action_path }}/tools/crawler/crawl.js 2>&1 | tee /tmp/qa-reports/crawler.txt
       env:
@@ -154,7 +206,44 @@ runs:
         CRAWL_MAX_PAGES: ${{ inputs.crawler-max-pages }}
         CRAWL_WAIT_MS: ${{ inputs.crawler-wait-ms }}
         CRAWL_EXCLUDE_URLS: ${{ inputs.crawler-exclude-urls }}
-        CRAWL_FAIL_ON_VIOLATIONS: ${{ inputs.crawler-fail-on-violations }}
+        CRAWL_FAIL_ON_VIOLATIONS: ${{ inputs.baseline-enabled == 'true' && 'false' || 'true' }}
+        CRAWL_ARGOS_ENABLED: ${{ inputs.argos-enabled }}
+        CRAWL_FINDINGS_PATH: /tmp/qa-reports/crawler-findings.json
+        CRAWL_SCREENSHOT_DIR: /tmp/qa-reports/screenshots
+
+    - name: Crawler baseline diff
+      if: inputs.crawler-enabled == 'true' && inputs.baseline-enabled == 'true'
+      shell: bash
+      run: node ${{ github.action_path }}/scripts/baseline-diff.mjs
+      env:
+        CRAWL_FINDINGS_PATH: /tmp/qa-reports/crawler-findings.json
+        QA_BASELINE_DIR: /tmp/qa-reports/baseline
+
+    - name: Save crawler baseline
+      if: inputs.crawler-enabled == 'true' && inputs.baseline-enabled == 'true' && github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'master')
+      uses: actions/cache/save@v4
+      with:
+        path: /tmp/qa-reports/baseline
+        key: autoqa-baseline-${{ github.repository }}-${{ github.ref_name }}-${{ github.sha }}
+
+    - name: Upload screenshots to Argos
+      if: inputs.crawler-enabled == 'true' && inputs.argos-enabled == 'true' && inputs.argos-token != ''
+      shell: bash
+      run: npx --yes @argos-ci/cli@latest upload /tmp/qa-reports/screenshots
+      env:
+        ARGOS_TOKEN: ${{ inputs.argos-token }}
+
+    - name: AuthZ two-token matrix
+      if: inputs.authz-enabled == 'true'
+      shell: bash
+      run: node ${{ github.action_path }}/scripts/run-authz-matrix.mjs
+      env:
+        QA_BASE_URL: ${{ inputs.url }}
+        QA_AUTH_URL: ${{ inputs.url }}${{ inputs.auth-url }}
+        QA_AUTHZ_ENABLED: ${{ inputs.authz-enabled }}
+        QA_AUTHZ_USER_A_BODY: ${{ inputs.authz-user-a-body }}
+        QA_AUTHZ_USER_B_BODY: ${{ inputs.authz-user-b-body }}
+        QA_AUTHZ_RESOURCE_PATHS: ${{ inputs.authz-resource-paths }}
 
     - name: Upload QA reports
       if: always()

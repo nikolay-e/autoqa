@@ -1,4 +1,3 @@
 node_modules/
-/tmp/
 ANALYSIS_*.md
 tools/crawler/qa-axe.mjs

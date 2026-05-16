@@ -13,9 +13,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
       - run: cd tools/crawler && npm ci
-      - run: npx prettier --check "**/*.{js,json,yml,yaml,md}"
+      - run: npx prettier --check "**/*.{js,mjs,json,yml,yaml,md}"
+      - run: node --check tools/crawler/crawl.js
+      - run: node --check scripts/baseline-diff.mjs
+      - run: node --check scripts/run-authz-matrix.mjs
+      - run: bash -n scripts/auth.sh scripts/run-schemathesis.sh scripts/run-zap.sh scripts/run-observatory.sh
 
   self-test:
     runs-on: ubuntu-latest
@@ -25,7 +29,9 @@ jobs:
       - uses: ./
         with:
           url: https://nikolay-eremeev.com
-          crawler-seed-pages: '/,/ru'
-          crawler-max-pages: '5'
-          crawler-wait-ms: '1000'
-          crawler-fail-on-violations: 'false'
+          crawler-seed-pages: "/,/ru"
+          crawler-max-pages: "5"
+          crawler-wait-ms: "1000"
+          baseline-enabled: "true"
+          observatory-enabled: "true"
+          observatory-fail-grade: "F"
