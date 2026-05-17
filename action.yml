@@ -54,14 +54,24 @@ inputs:
   crawler-exclude-urls:
     description: "Comma-separated URL patterns to ignore in error reporting"
     default: ""
+  crawler-fail-on-violations:
+    description: "Fail the composite action when the crawler reports violations (broken links, JS errors, critical axe, CSP, mixed content, network errors). Honored by the final gate step. Ignored when baseline-enabled=true (baseline diff governs instead)."
+    default: "true"
 
   baseline-enabled:
     description: "Diff crawler findings against cached baseline; fail PRs only on NEW findings (push to main updates baseline)"
     default: "true"
 
+  mechanical-fail-on-violations:
+    description: "Fail the composite action when Phase 1.5 mechanical checks (M1–M6) report any P0 finding. P1 findings are always informational. Default off because mechanical checks are advisory."
+    default: "false"
+
   schemathesis-enabled:
     description: "Run Schemathesis API fuzzing"
     default: "false"
+  schemathesis-fail-on-violations:
+    description: "Fail the composite action when Schemathesis reports failed/errored cases."
+    default: "true"
   openapi-url:
     description: "OpenAPI spec path (e.g., /api/openapi.json)"
     default: ""
@@ -78,6 +88,9 @@ inputs:
   zap-enabled:
     description: "Run OWASP ZAP security scan"
     default: "false"
+  zap-fail-on-violations:
+    description: "Fail the composite action when ZAP reports HIGH-risk alerts."
+    default: "true"
 
   observatory-enabled:
     description: "Run MDN HTTP Observatory security-headers scan"
@@ -85,6 +98,9 @@ inputs:
   observatory-fail-grade:
     description: "Fail if Observatory grade is worse than this (A+ A A- B+ B B- C+ C C- D+ D D- F)"
     default: "B"
+  observatory-fail-on-violations:
+    description: "Fail the composite action when Observatory grade is worse than observatory-fail-grade."
+    default: "true"
 
   argos-enabled:
     description: "Capture screenshots at 1440x900 and 375x667 viewports and upload to Argos for visual regression"
@@ -105,6 +121,9 @@ inputs:
   authz-resource-paths:
     description: "Comma-separated resource paths owned by user A (e.g., /api/notes/1,/api/notes/2). For each: user A must get 2xx, user B must get 401/403/404, no-auth must get 401/403/404."
     default: ""
+  authz-fail-on-violations:
+    description: "Fail the composite action when the AuthZ matrix reports BOLA / auth-bypass."
+    default: "true"
 
 outputs:
   report-path:
@@ -314,3 +333,24 @@ runs:
         path: /tmp/qa-reports/
         retention-days: 7
         if-no-files-found: ignore
+
+    - name: Aggregate findings and gate
+      if: always()
+      shell: bash
+      run: node ${{ github.action_path }}/scripts/aggregate-gate.mjs
+      env:
+        QA_REPORTS_DIR: /tmp/qa-reports
+        QA_GATE_CRAWLER_ENABLED: ${{ inputs.crawler-enabled }}
+        QA_GATE_BASELINE_ENABLED: ${{ inputs.baseline-enabled }}
+        QA_GATE_SCHEMATHESIS_ENABLED: ${{ inputs.schemathesis-enabled }}
+        QA_GATE_ZAP_ENABLED: ${{ inputs.zap-enabled }}
+        QA_GATE_MECHANICAL_ENABLED: ${{ inputs.crawler-enabled }}
+        QA_GATE_OBSERVATORY_ENABLED: ${{ inputs.observatory-enabled }}
+        QA_GATE_AUTHZ_ENABLED: ${{ inputs.authz-enabled }}
+        QA_GATE_CRAWLER_FAIL: ${{ inputs.crawler-fail-on-violations }}
+        QA_GATE_SCHEMATHESIS_FAIL: ${{ inputs.schemathesis-fail-on-violations }}
+        QA_GATE_ZAP_FAIL: ${{ inputs.zap-fail-on-violations }}
+        QA_GATE_MECHANICAL_FAIL: ${{ inputs.mechanical-fail-on-violations }}
+        QA_GATE_OBSERVATORY_FAIL: ${{ inputs.observatory-fail-on-violations }}
+        QA_GATE_AUTHZ_FAIL: ${{ inputs.authz-fail-on-violations }}
+        QA_OBSERVATORY_FAIL_GRADE: ${{ inputs.observatory-fail-grade }}
