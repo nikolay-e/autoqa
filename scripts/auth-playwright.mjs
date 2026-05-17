@@ -70,7 +70,9 @@ const page = await context.newPage();
 let token = "";
 
 if (apiPath) {
-  const fullApi = `${baseUrl.replace(/\/$/, "")}${apiPath}`;
+  const fullApi = /^https?:\/\//.test(apiPath)
+    ? apiPath
+    : `${baseUrl.replace(/\/$/, "")}${apiPath}`;
   page.on("response", async (response) => {
     if (token || !response.url().startsWith(fullApi)) return;
     try {
@@ -84,7 +86,9 @@ if (apiPath) {
 }
 
 try {
-  const loginUrl = `${baseUrl.replace(/\/$/, "")}${loginPath}`;
+  const loginUrl = /^https?:\/\//.test(loginPath)
+    ? loginPath
+    : `${baseUrl.replace(/\/$/, "")}${loginPath}`;
   console.log(`Navigating to ${loginUrl}...`);
   await page.goto(loginUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
 

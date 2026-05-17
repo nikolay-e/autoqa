@@ -8,7 +8,11 @@ if [ -z "${QA_BASE_URL:-}" ] || [ -z "${QA_OPENAPI_URL:-}" ]; then
   exit 0
 fi
 
-SPEC_URL="${QA_BASE_URL}${QA_OPENAPI_URL}"
+if [[ "${QA_OPENAPI_URL}" =~ ^https?:// ]]; then
+  SPEC_URL="${QA_OPENAPI_URL}"
+else
+  SPEC_URL="${QA_BASE_URL%/}${QA_OPENAPI_URL}"
+fi
 TOKEN="${QA_AUTH_TOKEN:-}"
 EXCLUDE_PATHS="${QA_SCHEMATHESIS_EXCLUDE_PATHS:-}"
 EXCLUDE_CHECKS="${QA_SCHEMATHESIS_EXCLUDE_CHECKS:-ignored_auth,unsupported_method}"

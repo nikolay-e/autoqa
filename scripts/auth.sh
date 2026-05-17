@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ -z "${QA_AUTH_URL:-}" ] || [ -z "${QA_AUTH_BODY:-}" ]; then
-  echo "Skipping auth — QA_AUTH_URL or QA_AUTH_BODY not set"
+if [ -z "${QA_AUTH_PATH:-}" ] || [ -z "${QA_AUTH_BODY:-}" ]; then
+  echo "Skipping auth — QA_AUTH_PATH or QA_AUTH_BODY not set"
   exit 0
+fi
+
+if [[ "${QA_AUTH_PATH}" =~ ^https?:// ]]; then
+  QA_AUTH_URL="${QA_AUTH_PATH}"
+else
+  QA_AUTH_URL="${QA_BASE_URL%/}${QA_AUTH_PATH}"
 fi
 
 echo "Authenticating against ${QA_AUTH_URL}..."

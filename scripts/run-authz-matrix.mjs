@@ -3,7 +3,10 @@ import { writeFileSync, mkdirSync, appendFileSync } from "node:fs";
 
 const ENABLED = process.env.QA_AUTHZ_ENABLED === "true";
 const BASE_URL = process.env.QA_BASE_URL || "";
-const AUTH_URL = process.env.QA_AUTH_URL || "";
+const AUTH_PATH = process.env.QA_AUTH_PATH || "";
+const AUTH_URL = /^https?:\/\//.test(AUTH_PATH)
+  ? AUTH_PATH
+  : `${BASE_URL.replace(/\/$/, "")}${AUTH_PATH}`;
 const USER_A_BODY = process.env.QA_AUTHZ_USER_A_BODY || "";
 const USER_B_BODY = process.env.QA_AUTHZ_USER_B_BODY || "";
 const RESOURCE_PATHS = (process.env.QA_AUTHZ_RESOURCE_PATHS || "")
@@ -71,9 +74,9 @@ async function main() {
     console.log("Skipping AuthZ matrix — QA_AUTHZ_ENABLED != 'true'");
     return;
   }
-  if (!BASE_URL || !AUTH_URL || !USER_A_BODY || !USER_B_BODY) {
+  if (!BASE_URL || !AUTH_PATH || !USER_A_BODY || !USER_B_BODY) {
     console.log(
-      "Skipping AuthZ matrix — required env vars missing (BASE_URL, AUTH_URL, USER_A_BODY, USER_B_BODY)",
+      "Skipping AuthZ matrix — required env vars missing (BASE_URL, AUTH_PATH, USER_A_BODY, USER_B_BODY)",
     );
     return;
   }
@@ -95,7 +98,9 @@ async function main() {
   const findings = [];
 
   for (const path of RESOURCE_PATHS) {
-    const url = `${BASE_URL}${path}`;
+    const url = /^https?:\/\//.test(path)
+      ? path
+      : `${BASE_URL.replace(/\/$/, "")}${path}`;
     const aRes = await probe(url, { Authorization: `Bearer ${tokenA}` });
     const bRes = await probe(url, { Authorization: `Bearer ${tokenB}` });
     const noAuthRes = await probe(url, {});

@@ -169,7 +169,8 @@ runs:
       continue-on-error: true
       run: bash ${{ github.action_path }}/scripts/auth.sh
       env:
-        QA_AUTH_URL: ${{ inputs.url }}${{ inputs.auth-url }}
+        QA_BASE_URL: ${{ inputs.url }}
+        QA_AUTH_PATH: ${{ inputs.auth-url }}
         QA_AUTH_BODY: ${{ inputs.auth-body }}
 
     - name: Obtain auth token (Playwright)
@@ -299,7 +300,7 @@ runs:
       run: node ${{ github.action_path }}/scripts/run-authz-matrix.mjs
       env:
         QA_BASE_URL: ${{ inputs.url }}
-        QA_AUTH_URL: ${{ inputs.url }}${{ inputs.auth-url }}
+        QA_AUTH_PATH: ${{ inputs.auth-url }}
         QA_AUTHZ_ENABLED: ${{ inputs.authz-enabled }}
         QA_AUTHZ_USER_A_BODY: ${{ inputs.authz-user-a-body }}
         QA_AUTHZ_USER_B_BODY: ${{ inputs.authz-user-b-body }}
