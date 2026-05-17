@@ -14,6 +14,12 @@ inputs:
   auth-body:
     description: "JSON body for auth request"
     default: ""
+  auth-mode:
+    description: "How to acquire the auth token. 'curl' (default): POST to auth-url with auth-body. 'playwright': render auth-login-page in a real browser (set to bypass Cloudflare/Akamai bot challenges that filter curl)."
+    default: "curl"
+  auth-login-page:
+    description: "Login page path used when auth-mode=playwright (e.g., /login). Falls back to crawler-login-url if empty."
+    default: ""
 
   crawler-enabled:
     description: "Run Playwright crawler"
@@ -142,14 +148,46 @@ runs:
           autoqa-baseline-${{ github.repository }}-main-
           autoqa-baseline-${{ github.repository }}-master-
 
-    - name: Obtain auth token
-      if: inputs.auth-url != ''
+    - name: Setup Node.js (for Playwright auth)
+      if: inputs.auth-url != '' && inputs.auth-mode == 'playwright'
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      with:
+        node-version: "22"
+
+    - name: Install Playwright (for Playwright auth)
+      if: inputs.auth-url != '' && inputs.auth-mode == 'playwright'
+      shell: bash
+      run: |
+        cd ${{ github.action_path }}/scripts
+        npm init -y >/dev/null 2>&1 || true
+        npm install --no-save playwright@1
+        npx playwright install --with-deps chromium
+
+    - name: Obtain auth token (curl)
+      if: inputs.auth-url != '' && inputs.auth-mode != 'playwright'
       shell: bash
       continue-on-error: true
       run: bash ${{ github.action_path }}/scripts/auth.sh
       env:
         QA_AUTH_URL: ${{ inputs.url }}${{ inputs.auth-url }}
         QA_AUTH_BODY: ${{ inputs.auth-body }}
+
+    - name: Obtain auth token (Playwright)
+      if: inputs.auth-url != '' && inputs.auth-mode == 'playwright'
+      shell: bash
+      continue-on-error: true
+      run: |
+        cd ${{ github.action_path }}/scripts
+        node auth-playwright.mjs
+      env:
+        QA_BASE_URL: ${{ inputs.url }}
+        QA_AUTH_API_PATH: ${{ inputs.auth-url }}
+        QA_AUTH_BODY: ${{ inputs.auth-body }}
+        QA_AUTH_LOGIN_PAGE: ${{ inputs.auth-login-page != '' && inputs.auth-login-page || inputs.crawler-login-url }}
+        QA_AUTH_SELECTOR_USERNAME: ${{ inputs.crawler-login-selector-username }}
+        QA_AUTH_SELECTOR_PASSWORD: ${{ inputs.crawler-login-selector-password }}
+        QA_AUTH_SELECTOR_SUBMIT: ${{ inputs.crawler-login-selector-submit }}
+        QA_REPORTS_DIR: /tmp/qa-reports
 
     - name: Install Schemathesis
       if: always() && inputs.schemathesis-enabled == 'true'
