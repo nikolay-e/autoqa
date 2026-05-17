@@ -145,18 +145,19 @@ runs:
     - name: Obtain auth token
       if: inputs.auth-url != ''
       shell: bash
+      continue-on-error: true
       run: bash ${{ github.action_path }}/scripts/auth.sh
       env:
         QA_AUTH_URL: ${{ inputs.url }}${{ inputs.auth-url }}
         QA_AUTH_BODY: ${{ inputs.auth-body }}
 
     - name: Install Schemathesis
-      if: inputs.schemathesis-enabled == 'true'
+      if: always() && inputs.schemathesis-enabled == 'true'
       shell: bash
       run: pip install schemathesis
 
     - name: Schemathesis API fuzzing
-      if: inputs.schemathesis-enabled == 'true'
+      if: always() && inputs.schemathesis-enabled == 'true'
       shell: bash
       continue-on-error: true
       run: bash ${{ github.action_path }}/scripts/run-schemathesis.sh

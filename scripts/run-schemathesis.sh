@@ -15,12 +15,19 @@ EXCLUDE_CHECKS="${QA_SCHEMATHESIS_EXCLUDE_CHECKS:-ignored_auth,unsupported_metho
 
 echo "Downloading OpenAPI spec from ${SPEC_URL}..."
 
-CURL_ARGS=(-sf)
+CURL_ARGS=(
+  -sf --connect-timeout 15 --max-time 60
+  -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"
+)
 if [ -n "${TOKEN}" ]; then
   CURL_ARGS+=(-H "Authorization: Bearer ${TOKEN}")
 fi
 
-curl "${CURL_ARGS[@]}" "${SPEC_URL}" -o /tmp/qa-reports/openapi.json
+if ! curl "${CURL_ARGS[@]}" "${SPEC_URL}" -o /tmp/qa-reports/openapi.json; then
+  echo "ERROR: failed to download OpenAPI spec from ${SPEC_URL}"
+  rm -f /tmp/qa-reports/openapi.json
+  exit 1
+fi
 
 ST_BASE_URL="${QA_SCHEMATHESIS_BASE_URL:-${QA_BASE_URL}}"
 

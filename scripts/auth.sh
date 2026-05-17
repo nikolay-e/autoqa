@@ -15,19 +15,28 @@ RESPONSE_BODY=$(mktemp)
 # occasionally sends RST_STREAM after the response, surfacing as curl exit 92
 # or as a post-body read timeout). The body is already on disk by then —
 # success depends on whether we can parse a token, not on curl's exit code.
-HTTP_CODE=$(curl -sS --max-time 30 --http1.1 -o "${RESPONSE_BODY}" -w "%{http_code}" \
+# Disable set -e for the curl call to guarantee the exit code never propagates.
+set +e
+HTTP_CODE=$(curl -sS --connect-timeout 15 --max-time 45 --http1.1 \
+  -o "${RESPONSE_BODY}" -w "%{http_code}" \
   -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36" \
   -X POST "${QA_AUTH_URL}" \
   -H "Content-Type: application/json" \
   -H "Origin: ${BASE_ORIGIN}" \
-  -d "${QA_AUTH_BODY}" 2>/dev/null) || HTTP_CODE="${HTTP_CODE:-000}"
+  -d "${QA_AUTH_BODY}" 2>/dev/null)
+CURL_EXIT=$?
+set -e
+[ -z "${HTTP_CODE}" ] && HTTP_CODE="000"
+echo "Auth curl: exit=${CURL_EXIT}, http_code=${HTTP_CODE}"
 
+set +e
 TOKEN=$(python3 -c "import sys,json
 try:
     d=json.load(open(sys.argv[1]))
     print(d.get('AccessToken', d.get('access_token', d.get('token', ''))))
 except Exception:
     print('')" "${RESPONSE_BODY}" 2>/dev/null)
+set -e
 
 if [ -z "${TOKEN}" ]; then
   echo "ERROR: Auth failed (HTTP ${HTTP_CODE}, no AccessToken in response)"

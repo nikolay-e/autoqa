@@ -75,8 +75,8 @@ async function login(page, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
       await page.goto(`${BASE_URL}${LOGIN_URL}`, {
-        waitUntil: "load",
-        timeout: 30000,
+        waitUntil: "domcontentloaded",
+        timeout: 60000,
       });
       await page.fill(LOGIN_SELECTOR_USERNAME, USERNAME);
       await page.fill(LOGIN_SELECTOR_PASSWORD, PASSWORD);
@@ -212,8 +212,8 @@ async function crawlPage(page, path) {
 
   try {
     const response = await page.goto(`${BASE_URL}${path}`, {
-      waitUntil: "load",
-      timeout: 30000,
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
     });
 
     if (!response || response.status() >= 400) {
@@ -463,6 +463,8 @@ async function main() {
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
     ignoreHTTPSErrors: true,
+    userAgent:
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
   });
   const page = await context.newPage();
 
