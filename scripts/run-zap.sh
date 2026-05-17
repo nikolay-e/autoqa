@@ -26,6 +26,9 @@ if [ -n "${TOKEN}" ]; then
 fi
 
 echo "Running OWASP ZAP..."
+# ZAP image runs as uid 1000; GitHub runner workspace is owned by uid 1001.
+# Make /tmp/qa-reports world-writable so ZAP can drop zap-report.json there.
+chmod 777 /tmp/qa-reports
 docker run --rm \
   -v /tmp/qa-reports:/zap/wrk \
   ghcr.io/zaproxy/zaproxy:stable \
