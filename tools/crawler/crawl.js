@@ -273,12 +273,18 @@ async function crawlPage(page, path) {
             const itemEls =
               sel === "tbody"
                 ? el.querySelectorAll("tr")
-                : el.querySelectorAll(":scope > li, :scope > [role='listitem'], :scope > [role='row'], :scope > div");
+                : el.querySelectorAll(
+                    ":scope > li, :scope > [role='listitem'], :scope > [role='row'], :scope > div",
+                  );
             const items = Array.from(itemEls)
               .map((it) => collectText(it))
               .filter((t) => t && t.length < 500);
             if (items.length >= 2) {
-              lists.push({ selector: sel, count: items.length, items: items.slice(0, 60) });
+              lists.push({
+                selector: sel,
+                count: items.length,
+                items: items.slice(0, 60),
+              });
             }
           }
         }
@@ -293,10 +299,16 @@ async function crawlPage(page, path) {
           const t = n.nodeValue.trim();
           if (t && t.length >= 2 && t.length < 500) textNodes.push(t);
         }
-        const buttons = Array.from(document.querySelectorAll('button, [role="button"]'))
-          .map((b) => (b.innerText || b.getAttribute("aria-label") || "").trim())
+        const buttons = Array.from(
+          document.querySelectorAll('button, [role="button"]'),
+        )
+          .map((b) =>
+            (b.innerText || b.getAttribute("aria-label") || "").trim(),
+          )
           .filter(Boolean);
-        const headings = Array.from(document.querySelectorAll("h1,h2,h3,h4,h5,h6"))
+        const headings = Array.from(
+          document.querySelectorAll("h1,h2,h3,h4,h5,h6"),
+        )
           .map((h) => collectText(h))
           .filter(Boolean);
         return {

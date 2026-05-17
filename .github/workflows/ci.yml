@@ -19,6 +19,8 @@ jobs:
       - run: node --check tools/crawler/crawl.js
       - run: node --check scripts/baseline-diff.mjs
       - run: node --check scripts/run-authz-matrix.mjs
+      - run: node --check scripts/auth-playwright.mjs
+      - run: node --check scripts/mechanical-checks.mjs
       - run: bash -n scripts/auth.sh scripts/run-schemathesis.sh scripts/run-zap.sh scripts/run-observatory.sh
 
   self-test:

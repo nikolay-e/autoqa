@@ -72,14 +72,21 @@ const FS_TITLE_PREFIX = /^(\d{1,2})\s*[-._]\s*\S/;
 // Verbatim text that should never reach a user screen. Each token
 // chosen to be (a) zero collisions with real product copy and (b) a
 // known LLM/SDK leakage pattern.
-const PLACEHOLDER = /\b(lorem ipsum|TODO|FIXME|asdf{2,}|qwerty{2,}|<null>|undefined undefined|\[object Object\])\b/i;
+const PLACEHOLDER =
+  /\b(lorem ipsum|TODO|FIXME|asdf{2,}|qwerty{2,}|<null>|undefined undefined|\[object Object\])\b/i;
 
 // Word-boundary form of NaN to avoid catching brand names that include
 // "Nan" (e.g., place names). Used in M5 only.
 const BARE_NAN = /(^|\s)NaN(\s|$|[.,;:!?])/;
 
 for (const page of pages) {
-  const { path, textNodes = [], headings = [], buttons = [], lists = [] } = page;
+  const {
+    path,
+    textNodes = [],
+    headings = [],
+    buttons = [],
+    lists = [],
+  } = page;
   const allUserText = [...textNodes, ...headings, ...buttons];
 
   // M1 — Unicode round-trip / mojibake
@@ -129,7 +136,9 @@ for (const page of pages) {
   for (const list of lists) {
     const items = list.items;
     if (items.length < 4) continue;
-    const prefixed = items.filter((it) => FS_TITLE_PREFIX.test(it.split("\n")[0]));
+    const prefixed = items.filter((it) =>
+      FS_TITLE_PREFIX.test(it.split("\n")[0]),
+    );
     if (prefixed.length >= 4 && prefixed.length / items.length >= 0.5) {
       push(
         "M4",

@@ -6,9 +6,13 @@ const baseUrl = process.env.QA_BASE_URL;
 const loginPath = process.env.QA_AUTH_LOGIN_PAGE || "/login";
 const apiPath = process.env.QA_AUTH_API_PATH;
 const body = process.env.QA_AUTH_BODY;
-const userSel = process.env.QA_AUTH_SELECTOR_USERNAME || 'input[type="text"], input[type="email"]';
-const passSel = process.env.QA_AUTH_SELECTOR_PASSWORD || 'input[type="password"]';
-const submitSel = process.env.QA_AUTH_SELECTOR_SUBMIT || 'form button[type="submit"]';
+const userSel =
+  process.env.QA_AUTH_SELECTOR_USERNAME ||
+  'input[type="text"], input[type="email"]';
+const passSel =
+  process.env.QA_AUTH_SELECTOR_PASSWORD || 'input[type="password"]';
+const submitSel =
+  process.env.QA_AUTH_SELECTOR_SUBMIT || 'form button[type="submit"]';
 const reportsDir = process.env.QA_REPORTS_DIR || "/tmp/qa-reports";
 
 if (!baseUrl || !body) {
@@ -26,16 +30,31 @@ try {
 
 const pick = (...keys) => {
   for (const k of keys) {
-    for (const variant of [k, k.toLowerCase(), k.charAt(0).toUpperCase() + k.slice(1)]) {
+    for (const variant of [
+      k,
+      k.toLowerCase(),
+      k.charAt(0).toUpperCase() + k.slice(1),
+    ]) {
       if (creds[variant] != null) return creds[variant];
     }
   }
   return undefined;
 };
-const username = pick("username", "email", "user", "Username", "Email", "User", "login", "Login");
+const username = pick(
+  "username",
+  "email",
+  "user",
+  "Username",
+  "Email",
+  "User",
+  "login",
+  "Login",
+);
 const password = pick("password", "pass", "Password", "Pw", "pw");
 if (!username || !password) {
-  console.error("QA_AUTH_BODY must contain username/email and password (case-insensitive, Pw/Password accepted)");
+  console.error(
+    "QA_AUTH_BODY must contain username/email and password (case-insensitive, Pw/Password accepted)",
+  );
   process.exit(1);
 }
 
