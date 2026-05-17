@@ -22,9 +22,11 @@ fi
 
 curl "${CURL_ARGS[@]}" "${SPEC_URL}" -o /tmp/qa-reports/openapi.json
 
+ST_BASE_URL="${QA_SCHEMATHESIS_BASE_URL:-${QA_BASE_URL}}"
+
 ST_ARGS=(
   run /tmp/qa-reports/openapi.json
-  --url "${QA_BASE_URL}"
+  --url "${ST_BASE_URL}"
   --checks all
 )
 
