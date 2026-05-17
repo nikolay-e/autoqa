@@ -23,6 +23,8 @@ fi
 
 echo "Auth token obtained"
 
+echo "::add-mask::${TOKEN}"
+
 mkdir -p /tmp/qa-reports
 echo "${TOKEN}" > /tmp/qa-reports/.auth-token
 
