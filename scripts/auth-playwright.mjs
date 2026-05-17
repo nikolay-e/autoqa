@@ -24,10 +24,18 @@ try {
   process.exit(1);
 }
 
-const username = creds.username ?? creds.email ?? creds.user;
-const password = creds.password ?? creds.pass;
+const pick = (...keys) => {
+  for (const k of keys) {
+    for (const variant of [k, k.toLowerCase(), k.charAt(0).toUpperCase() + k.slice(1)]) {
+      if (creds[variant] != null) return creds[variant];
+    }
+  }
+  return undefined;
+};
+const username = pick("username", "email", "user", "Username", "Email", "User", "login", "Login");
+const password = pick("password", "pass", "Password", "Pw", "pw");
 if (!username || !password) {
-  console.error("QA_AUTH_BODY must contain username/email and password");
+  console.error("QA_AUTH_BODY must contain username/email and password (case-insensitive, Pw/Password accepted)");
   process.exit(1);
 }
 
@@ -59,7 +67,7 @@ if (apiPath) {
 try {
   const loginUrl = `${baseUrl.replace(/\/$/, "")}${loginPath}`;
   console.log(`Navigating to ${loginUrl}...`);
-  await page.goto(loginUrl, { waitUntil: "load", timeout: 30000 });
+  await page.goto(loginUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
 
   await page.locator(userSel).first().fill(username);
   await page.locator(passSel).first().fill(password);
