@@ -26,6 +26,8 @@ const EXCLUDE_URLS = (process.env.CRAWL_EXCLUDE_URLS || "")
 const FAIL_ON_VIOLATIONS = process.env.CRAWL_FAIL_ON_VIOLATIONS === "true";
 const FINDINGS_PATH =
   process.env.CRAWL_FINDINGS_PATH || "/tmp/qa-reports/crawler-findings.json";
+const PAGES_PATH =
+  process.env.CRAWL_PAGES_PATH || "/tmp/qa-reports/crawler-pages.json";
 const SCREENSHOT_DIR =
   process.env.CRAWL_SCREENSHOT_DIR || "/tmp/qa-reports/screenshots";
 const ARGOS_ENABLED = process.env.CRAWL_ARGOS_ENABLED === "true";
@@ -45,6 +47,8 @@ const results = {
   cspViolations: [],
   mixedContent: [],
 };
+
+const pages = [];
 
 function fingerprint(...parts) {
   return createHash("sha1").update(parts.join("|")).digest("hex").slice(0, 16);
@@ -253,6 +257,61 @@ async function crawlPage(page, path) {
 
     await captureScreenshots(page, path);
 
+    try {
+      const extracted = await page.evaluate(() => {
+        const collectText = (el) => (el?.innerText || "").trim();
+        const listSelectors = [
+          "ul",
+          "ol",
+          '[role="list"]',
+          "tbody",
+          '[role="grid"]',
+        ];
+        const lists = [];
+        for (const sel of listSelectors) {
+          for (const el of document.querySelectorAll(sel)) {
+            const itemEls =
+              sel === "tbody"
+                ? el.querySelectorAll("tr")
+                : el.querySelectorAll(":scope > li, :scope > [role='listitem'], :scope > [role='row'], :scope > div");
+            const items = Array.from(itemEls)
+              .map((it) => collectText(it))
+              .filter((t) => t && t.length < 500);
+            if (items.length >= 2) {
+              lists.push({ selector: sel, count: items.length, items: items.slice(0, 60) });
+            }
+          }
+        }
+        const textNodes = [];
+        const walker = document.createTreeWalker(
+          document.body,
+          NodeFilter.SHOW_TEXT,
+          null,
+        );
+        let n;
+        while ((n = walker.nextNode())) {
+          const t = n.nodeValue.trim();
+          if (t && t.length >= 2 && t.length < 500) textNodes.push(t);
+        }
+        const buttons = Array.from(document.querySelectorAll('button, [role="button"]'))
+          .map((b) => (b.innerText || b.getAttribute("aria-label") || "").trim())
+          .filter(Boolean);
+        const headings = Array.from(document.querySelectorAll("h1,h2,h3,h4,h5,h6"))
+          .map((h) => collectText(h))
+          .filter(Boolean);
+        return {
+          bodyText: (document.body?.innerText || "").slice(0, 50000),
+          textNodes: textNodes.slice(0, 800),
+          buttons: buttons.slice(0, 200),
+          headings: headings.slice(0, 100),
+          lists: lists.slice(0, 20),
+        };
+      });
+      pages.push({ path, ...extracted });
+    } catch {
+      // page evaluation failed — skip page-level mechanical input but keep crawler findings
+    }
+
     const links = await extractLinks(page);
     for (const link of links) {
       if (!visited.has(link) && !queue.includes(link) && !isExcluded(link)) {
@@ -371,6 +430,7 @@ function writeFindings() {
   const dir = FINDINGS_PATH.substring(0, FINDINGS_PATH.lastIndexOf("/"));
   if (dir) mkdirSync(dir, { recursive: true });
   writeFileSync(FINDINGS_PATH, JSON.stringify(results, null, 2));
+  writeFileSync(PAGES_PATH, JSON.stringify(pages, null, 2));
   console.log(`\nFindings written to ${FINDINGS_PATH}`);
 }
 

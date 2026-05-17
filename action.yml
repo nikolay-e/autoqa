@@ -218,7 +218,17 @@ runs:
         CRAWL_FAIL_ON_VIOLATIONS: ${{ inputs.baseline-enabled == 'true' && 'false' || 'true' }}
         CRAWL_ARGOS_ENABLED: ${{ inputs.argos-enabled }}
         CRAWL_FINDINGS_PATH: /tmp/qa-reports/crawler-findings.json
+        CRAWL_PAGES_PATH: /tmp/qa-reports/crawler-pages.json
         CRAWL_SCREENSHOT_DIR: /tmp/qa-reports/screenshots
+
+    - name: Mechanical property checks (M1–M6)
+      if: always() && inputs.crawler-enabled == 'true'
+      shell: bash
+      continue-on-error: true
+      run: node ${{ github.action_path }}/scripts/mechanical-checks.mjs 2>&1 | tee /tmp/qa-reports/mechanical-checks.txt
+      env:
+        QA_PAGES_PATH: /tmp/qa-reports/crawler-pages.json
+        QA_MECHANICAL_OUTPUT: /tmp/qa-reports/mechanical-findings.json
 
     - name: Crawler baseline diff
       if: always() && inputs.crawler-enabled == 'true' && inputs.baseline-enabled == 'true'
