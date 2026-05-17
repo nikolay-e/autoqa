@@ -15,6 +15,28 @@ Project-specific QA methodology learnings for this repo. Generic patterns live i
 | SonarCloud                          | ❌            | No project configured for `nikolay-e_autoqa` (verified 2026-05-16)                                        |
 | Code review                         | ✅            | `git diff <prev-release>..HEAD`                                                                           |
 | Test hygiene                        | n/a           | No unit/integration tests; the self-test job is the integration test                                      |
+| Consumer-repo log sweep             | ✅            | MANDATORY — see "Consumer-repo log sweep" below                                                           |
+
+## Consumer-repo log sweep (MANDATORY on every `/qa` autoqa pass)
+
+The autoqa self-test on `example.com` only exercises a narrow happy path (no auth, no OpenAPI, no ZAP, no AuthZ matrix, single seed page). Real defects in autoqa surface in the `post-deploy-qa` jobs of the CONSUMER repos that pin `nikolay-e/autoqa@<sha>` — Cloudflare interactions, login redirects, OpenAPI variants, ZAP container quirks, schemathesis edge cases, etc. A green self-test does NOT mean autoqa is healthy.
+
+**Every `/qa` pass on this repo MUST:**
+
+1. Enumerate every consumer of `nikolay-e/autoqa` via `gh search code 'nikolay-e/autoqa@' --owner nikolay-e --json repository --jq '.[].repository.nameWithOwner' | sort -u`.
+2. For each consumer: pull the most recent `post-deploy-qa` (or equivalent) CI log with `gh run list -R <repo> --workflow=ci.yml --limit 5` → `gh run view -R <repo> --job <id> --log`.
+3. Grep each log for symptoms that originate in autoqa code (not in the consumer's app):
+   - `Permission denied:.*zap-report` → autoqa ZAP container perms
+   - `failed to download OpenAPI spec from .+https?://.+https?://` → autoqa URL concatenation bug
+   - `QA_AUTH_TOKEN: [a-f0-9]{16,}` → autoqa token-masking bug
+   - `Timeout 30000ms exceeded.*networkidle` → autoqa `waitUntil` choice
+   - `Auth curl: exit=92` / `RST_STREAM` / `Cloudflare` 403 challenge → autoqa auth-mode fallback
+   - Crawler exit 1 + green job conclusion → autoqa gate bug (issue #3 class)
+   - `mechanical-checks: .+ findings` flagged on stable copy → mechanical-checks false-positive (autoqa bug)
+4. **Every symptom traceable to autoqa is YOUR finding** even when surfaced in a consumer's log. Fix in this repo, push, then bump the pin in every affected consumer per the global skill's "Autoqa Pin Bumping" rule. If it cannot be fixed this session, `gh issue create -R nikolay-e/autoqa` with the consumer-log excerpt as reproduction.
+5. Symptoms that are clearly the consumer's app problem (app 5xx, app's OpenAPI invalid, app's CSP headers misconfigured) are NOT autoqa findings — they get reported back to the consumer repo per the normal `/qa` flow, not handled here.
+
+**Do not skip this step because the self-test is green.** The self-test catches autoqa regressions against `example.com`; the consumer sweep catches autoqa regressions against the real-world surface area (Cloudflare, OAuth, SPAs, OpenAPI, etc.) that the self-test cannot cover.
 
 ## Self-test target choice
 

@@ -11,8 +11,22 @@ fi
 
 TOKEN="${QA_AUTH_TOKEN:-}"
 
+# ZAP's OpenAPI importer aborts with "Unable to obtain any server URL from the
+# definition" when the spec's `servers` is empty or relative (e.g. `[{"url":"/"}]`).
+# Always rewrite to an absolute URL — schemathesis already does the same via --url.
+# Falls back to QA_BASE_URL when QA_SCHEMATHESIS_BASE_URL is not set. Ref: issue #6.
+ZAP_TARGET_URL="${QA_SCHEMATHESIS_BASE_URL:-${QA_BASE_URL%/}}"
+if command -v jq >/dev/null 2>&1; then
+  jq --arg u "${ZAP_TARGET_URL}" '.servers = [{"url": $u}]' \
+    /tmp/qa-reports/openapi.json > /tmp/qa-reports/openapi-zap.json
+  ZAP_SPEC="/zap/wrk/openapi-zap.json"
+else
+  echo "warning: jq missing — passing original spec; ZAP may fail on relative servers"
+  ZAP_SPEC="/zap/wrk/openapi.json"
+fi
+
 ZAP_ARGS=(
-  -t /zap/wrk/openapi.json
+  -t "${ZAP_SPEC}"
   -f openapi
   -I
   -J /zap/wrk/zap-report.json
