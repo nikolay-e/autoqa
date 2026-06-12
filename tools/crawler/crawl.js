@@ -23,6 +23,10 @@ const EXCLUDE_URLS = (process.env.CRAWL_EXCLUDE_URLS || "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
+const CONSOLE_IGNORE_PATTERNS = (process.env.CRAWL_CONSOLE_IGNORE || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 const FAIL_ON_VIOLATIONS = process.env.CRAWL_FAIL_ON_VIOLATIONS === "true";
 const FINDINGS_PATH =
   process.env.CRAWL_FINDINGS_PATH || "/tmp/qa-reports/crawler-findings.json";
@@ -69,6 +73,13 @@ function pathSlug(path) {
 
 function isExcluded(url) {
   return EXCLUDE_URLS.some((pattern) => url.includes(pattern));
+}
+
+function isIgnoredConsoleMessage(text, sourceUrl) {
+  if (sourceUrl && isExcluded(sourceUrl)) return true;
+  return CONSOLE_IGNORE_PATTERNS.some(
+    (pattern) => text.includes(pattern) || sourceUrl.includes(pattern),
+  );
 }
 
 async function login(page, retries = 3) {
@@ -155,6 +166,8 @@ async function crawlPage(page, path) {
   page.on("console", (msg) => {
     const text = msg.text();
     const type = msg.type();
+    const sourceUrl = msg.location().url || "";
+    if (isIgnoredConsoleMessage(text, sourceUrl)) return;
     if (CSP_VIOLATION_PATTERN.test(text)) {
       cspIssues.push({
         path,

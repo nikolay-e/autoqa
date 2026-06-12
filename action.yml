@@ -54,6 +54,9 @@ inputs:
   crawler-exclude-urls:
     description: "Comma-separated URL patterns to ignore in error reporting"
     default: ""
+  crawler-console-ignore:
+    description: "Comma-separated substrings matched against console message text or source script URL; matching messages are dropped from error reporting (third-party noise such as CDN bot-challenge probes)"
+    default: ""
   crawler-fail-on-violations:
     description: "Fail the composite action when the crawler reports violations (broken links, JS errors, critical axe, CSP, mixed content, network errors). Honored by the final gate step. Ignored when baseline-enabled=true (baseline diff governs instead)."
     default: "true"
@@ -274,6 +277,7 @@ runs:
         CRAWL_MAX_PAGES: ${{ inputs.crawler-max-pages }}
         CRAWL_WAIT_MS: ${{ inputs.crawler-wait-ms }}
         CRAWL_EXCLUDE_URLS: ${{ inputs.crawler-exclude-urls }}
+        CRAWL_CONSOLE_IGNORE: ${{ inputs.crawler-console-ignore }}
         CRAWL_FAIL_ON_VIOLATIONS: ${{ inputs.baseline-enabled == 'true' && 'false' || 'true' }}
         CRAWL_ARGOS_ENABLED: ${{ inputs.argos-enabled }}
         CRAWL_FINDINGS_PATH: /tmp/qa-reports/crawler-findings.json
