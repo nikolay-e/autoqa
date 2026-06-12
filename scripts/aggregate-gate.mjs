@@ -87,10 +87,12 @@ function gateCrawler() {
     }
     const fresh = diff.fresh || [];
     if (fresh.length > 0) {
+      const baselineUpdatedOnMainPush =
+        diff.eventName === "push" && ["main", "master"].includes(diff.refName);
       record(
         "crawler",
-        "fail",
-        `${fresh.length} NEW crawler findings vs baseline`,
+        baselineUpdatedOnMainPush ? "warn" : "fail",
+        `${fresh.length} NEW crawler findings vs baseline${baselineUpdatedOnMainPush ? " (baseline updated on main push — not blocking)" : ""}`,
         fresh
           .slice(0, 10)
           .map((f) => `${f.label || f.category} @ ${f.path}: ${f.summary}`),
