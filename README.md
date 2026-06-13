@@ -44,9 +44,15 @@ On a PR this fails only on **new** axe / JS / broken-link / CSP / mixed-content 
     url: https://example.com
     crawler-seed-pages: "/,/about,/blog"
     crawler-max-pages: "30"
+    crawler-exclude-urls: "challenges.cloudflare.com,/cdn-cgi/"
+    crawler-console-ignore: "font-size:0;color:transparent"
     observatory-enabled: "true"
     observatory-fail-grade: "B"
 ```
+
+`crawler-exclude-urls` skips matching pages/script sources; `crawler-console-ignore`
+drops console messages whose text or originating script URL matches any
+comma-separated pattern (e.g. third-party bot-challenge noise).
 
 ### App with login + API fuzzing + ZAP + AuthZ
 
