@@ -1,6 +1,11 @@
 # QA — autoqa
 
-Project-specific QA methodology learnings for this repo. Generic patterns live in the global QA skill.
+Project-specific QA methodology learnings for this repo. Generic patterns live in the `/qa` skill.
+
+> **Producer/consumer split:** this repo is the PRODUCER of the autoqa action. The
+> `/qa` skill's **Autoqa Pin Bumping** rule is the CONSUMER side (bump the pinned
+> SHA in every repo that `uses: nikolay-e/autoqa@<sha>`). They are complementary —
+> fix the action here, then bump consumers there. See "Consumer-repo log sweep".
 
 ## Applicability matrix
 
@@ -12,7 +17,7 @@ Project-specific QA methodology learnings for this repo. Generic patterns live i
 | Backend smoke                       | ❌            | No backend                                                                                                |
 | Browser QA (Playwright MCP) on prod | ❌            | No deployed UI                                                                                            |
 | autoqa self-test                    | ✅            | The action's `ci.yml` runs `uses: ./` against example.com — this IS the autoqa pipeline running on itself |
-| SonarCloud                          | ❌            | No project configured for `nikolay-e_autoqa` (verified 2026-05-16)                                        |
+| SonarCloud                          | ❌            | No project configured for `nikolay-e_autoqa`                                                              |
 | Code review                         | ✅            | `git diff <prev-release>..HEAD`                                                                           |
 | Test hygiene                        | n/a           | No unit/integration tests; the self-test job is the integration test                                      |
 | Consumer-repo log sweep             | ✅            | MANDATORY — see "Consumer-repo log sweep" below                                                           |
@@ -83,6 +88,10 @@ The autoqa self-test on `example.com` only exercises a narrow happy path (no aut
 
 - When adding a new top-level script (e.g., `scripts/foo.mjs`), also add an explicit `node --check scripts/foo.mjs` line to `.github/workflows/ci.yml` `lint` job — prettier check alone won't catch a syntax error. The lint job's syntax-check steps are an opt-in list, not a glob.
 
-## mechanical-checks.mjs M1 regex literal
+## mechanical-checks.mjs M1 invisible-char trap
 
 - The mojibake guard at `scripts/mechanical-checks.mjs:53` uses `/[-ɏ]/` written as two raw Unicode chars (U+0080 .. U+024F) separated by a literal `-` in the source bytes. The U+0080 (PADDING CHARACTER) is invisible in most editors and **gets dropped if you paste the file content through a shell heredoc** — the resulting copy becomes `/[-ɏ]/` which matches only literal hyphen or U+024F. If editing this regex, work with the file via `Edit`/`Read` tools, never via `cat <<EOF`. Validate end-to-end with `node -e 'const re = require("fs").readFileSync("scripts/mechanical-checks.mjs","utf8").match(/return (\/\[.+?\]\/)/)[1]; console.log(eval("("+re+")").test("Ð¡ÐµÑ€Ð³ÐµÐ¹"))'` — should print `true`.
+
+---
+
+Generic QA patterns live in the `/qa` skill — do not duplicate here.
