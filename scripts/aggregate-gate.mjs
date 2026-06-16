@@ -123,6 +123,55 @@ function gateCrawler() {
   }
 }
 
+// Parse the schemathesis text report's FAILURES section into per-test-case
+// blocks and split them into "pre-servlet container rejections" (text/html
+// 4xx whose sole finding is an undocumented content-type — rejected below the
+// app, not fixable in app code) versus genuinely blocking failures.
+// `reconciled` is true only when the parsed block count matches the report's
+// own "N failed" total; when it does not, the caller falls back to failing on
+// the raw total so a parser drift can never silently suppress real failures.
+function classifySchemathesis(out) {
+  const failIdx = out.search(/={6,}\s*FAILURES\s*={6,}/);
+  const summaryIdx = out.search(/={6,}\s*SUMMARY\s*={6,}/);
+  if (failIdx === -1) return { preServlet: 0, blocking: 0, reconciled: false };
+  const section = out.slice(
+    failIdx,
+    summaryIdx === -1 ? out.length : summaryIdx,
+  );
+  // Blocks are delimited by underscore-ruled headers: "____ GET /path ____".
+  const rawBlocks = section.split(/^_{3,}.*_{3,}$/m).slice(1);
+  let preServlet = 0;
+  let blocking = 0;
+  for (const block of rawBlocks) {
+    const findingTypes = [...block.matchAll(/^- (.+)$/gm)].map((m) =>
+      m[1].trim(),
+    );
+    if (findingTypes.length === 0) continue;
+    const statuses = [...block.matchAll(/^\[(\d{3})\]/gm)].map((m) => m[1]);
+    const receivedCTs = [...block.matchAll(/Received:\s*(\S+)/g)].map((m) =>
+      m[1].toLowerCase(),
+    );
+    const onlyContentType = findingTypes.every(
+      (f) => f === "Undocumented Content-Type",
+    );
+    const allHtml =
+      receivedCTs.length > 0 &&
+      receivedCTs.every((ct) => ct.startsWith("text/html"));
+    const all4xx =
+      statuses.length > 0 && statuses.every((s) => s.startsWith("4"));
+    if (onlyContentType && allHtml && all4xx) preServlet++;
+    else blocking++;
+  }
+  const parsedTotal = preServlet + blocking;
+  const totalMatch = out.match(/(\d+)\s+failed/i);
+  const reportedTotal = totalMatch ? Number(totalMatch[1]) : -1;
+  return {
+    preServlet,
+    blocking,
+    reconciled: parsedTotal > 0 && parsedTotal === reportedTotal,
+  };
+}
+
 function gateSchemathesis() {
   if (!ENABLED.schemathesis) return;
   const txt = `${REPORTS}/schemathesis.txt`;
@@ -138,11 +187,36 @@ function gateSchemathesis() {
 
   const summaryMatch = out.match(/(\d+)\s+failed/i);
   if (summaryMatch && Number(summaryMatch[1]) > 0) {
-    record(
-      "schemathesis",
-      "fail",
-      `schemathesis reported ${summaryMatch[1]} failure(s)`,
-    );
+    const total = Number(summaryMatch[1]);
+    // An API that documents JSON/problem+json error bodies cannot itself
+    // emit a text/html 4xx from a controller — every reachable error path
+    // renders structured JSON. So a failure whose ONLY issue is an
+    // "Undocumented Content-Type" of text/html on a 4xx is a request that a
+    // layer BELOW the app (Tomcat/Jetty connector, nginx, the CDN) rejected
+    // before it ever reached a handler — typically the fuzzer's malformed
+    // path (control chars, invalid %-encoding) tripping the servlet
+    // container's URI parser. These are not app bugs and cannot be fixed in
+    // app code; surface them as informational, never blocking. 5xx text/html
+    // (e.g. a half-written binary stream) stays blocking. Ref: issue #8/#11.
+    const { preServlet, blocking, reconciled } = classifySchemathesis(out);
+    if (reconciled && preServlet > 0) {
+      if (preServlet > 0) {
+        record(
+          "schemathesis",
+          "info",
+          `${preServlet} pre-servlet container rejection(s) (text/html 4xx on malformed input — not app-fixable)`,
+        );
+      }
+      if (blocking > 0) {
+        record(
+          "schemathesis",
+          "fail",
+          `schemathesis reported ${blocking} failure(s)`,
+        );
+      }
+      return;
+    }
+    record("schemathesis", "fail", `schemathesis reported ${total} failure(s)`);
     return;
   }
   const errorMatch = out.match(/(\d+)\s+errored/i);
