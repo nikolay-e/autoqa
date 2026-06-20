@@ -34,14 +34,14 @@ const CATEGORIES = [
 
 function flatten(findings) {
   const out = [];
-  for (const [key, label] of CATEGORIES) {
+  for (const [key, label, summarize] of CATEGORIES) {
     for (const item of findings[key] || []) {
       out.push({
         category: key,
         label,
         path: item.path,
         fingerprint: item.fingerprint,
-        summary: CATEGORIES.find((c) => c[0] === key)[2](item),
+        summary: summarize(item),
       });
     }
   }
@@ -121,6 +121,7 @@ function main() {
     eventName: EVENT_NAME,
     refName: REF_NAME,
     baseRef: BASE_REF,
+    baselinePresent: baselineExists,
     fresh,
     persistent,
     fixed,
@@ -145,7 +146,11 @@ function main() {
     console.log(`Baseline saved to ${BASELINE_PATH}`);
   }
 
-  if (EVENT_NAME === "pull_request" && fresh.length > 0) {
+  if (EVENT_NAME === "pull_request" && fresh.length > 0 && !baselineExists) {
+    console.log(
+      `No baseline cached (cold cache / first run) — ${fresh.length} finding(s) not treated as new; gate skipped`,
+    );
+  } else if (EVENT_NAME === "pull_request" && fresh.length > 0) {
     console.error(`FAIL: ${fresh.length} new crawler findings vs baseline`);
     process.exit(1);
   }

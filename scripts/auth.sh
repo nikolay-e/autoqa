@@ -39,7 +39,7 @@ set +e
 TOKEN=$(python3 -c "import sys,json
 try:
     d=json.load(open(sys.argv[1]))
-    print(d.get('AccessToken', d.get('access_token', d.get('token', ''))))
+    print(d.get('AccessToken', d.get('access_token', d.get('token', d.get('jwt', '')))))
 except Exception:
     print('')" "${RESPONSE_BODY}" 2>/dev/null)
 set -e

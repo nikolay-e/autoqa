@@ -150,10 +150,17 @@ function gateCrawler() {
     if (fresh.length > 0) {
       const baselineUpdatedOnMainPush =
         diff.eventName === "push" && ["main", "master"].includes(diff.refName);
+      const noBaselineYet = diff.baselinePresent === false;
+      const notBlocking = baselineUpdatedOnMainPush || noBaselineYet;
+      const reason = baselineUpdatedOnMainPush
+        ? " (baseline updated on main push — not blocking)"
+        : noBaselineYet
+          ? " (no baseline cached — first run, not blocking)"
+          : "";
       record(
         "crawler",
-        baselineUpdatedOnMainPush ? "warn" : "fail",
-        `${fresh.length} NEW crawler findings vs baseline${baselineUpdatedOnMainPush ? " (baseline updated on main push — not blocking)" : ""}`,
+        notBlocking ? "warn" : "fail",
+        `${fresh.length} NEW crawler findings vs baseline${reason}`,
         fresh
           .slice(0, 10)
           .map((f) => `${f.label || f.category} @ ${f.path}: ${f.summary}`),
@@ -439,7 +446,15 @@ lines.push("|---|---|---|---|");
 for (const tool of Object.keys(ENABLED)) {
   if (tool === "baseline") continue;
   const tFindings = findings.filter((f) => f.tool === tool);
-  const status = tFindings.length === 0 ? "ok" : tFindings[0].severity;
+  const severityRank = { fail: 3, warn: 2, info: 1 };
+  const status =
+    tFindings.length === 0
+      ? "ok"
+      : tFindings.reduce((worst, f) =>
+          (severityRank[f.severity] || 0) > (severityRank[worst.severity] || 0)
+            ? f
+            : worst,
+        ).severity;
   lines.push(
     `| ${tool} | ${ENABLED[tool] ? "yes" : "no"} | ${FAIL_ON[tool] ? "yes" : "no"} | ${status} |`,
   );

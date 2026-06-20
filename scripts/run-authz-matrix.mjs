@@ -118,8 +118,14 @@ async function main() {
     if (bolaLeak)
       issues.push({
         kind: "bola",
-        detail: `user B got ${bRes.status} (expected 403/404)`,
+        detail: `user B got ${bRes.status} (expected 401/403/404)`,
       });
+    if (!bolaLeak && !ACCEPTABLE_FORBIDDEN.has(bRes.status)) {
+      issues.push({
+        kind: "bola-weak",
+        detail: `user B got ${bRes.status} (expected 401/403/404)`,
+      });
+    }
     if (authBypass)
       issues.push({
         kind: "auth-bypass",

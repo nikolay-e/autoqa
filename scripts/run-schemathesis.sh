@@ -34,6 +34,7 @@ if ! curl "${CURL_ARGS[@]}" "${SPEC_URL}" -o /tmp/qa-reports/openapi.json; then
 fi
 
 ST_BASE_URL="${QA_SCHEMATHESIS_BASE_URL:-${QA_BASE_URL}}"
+ST_BASE_URL="${ST_BASE_URL%/}"
 
 ST_ARGS=(
   run /tmp/qa-reports/openapi.json

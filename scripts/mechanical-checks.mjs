@@ -54,13 +54,13 @@ function looksLikeMojibake(s) {
 }
 
 // M2 — Tofu / replacement-glyph runs.
-// ≥3 consecutive of #, ?, □, ▯, � in user-facing text. These appear
-// when a font cannot render a codepoint OR a backend dumps unknown
-// chars as placeholders. Real content does not contain runs like this
-// (markdown headers `###` are stripped before reaching the DOM).
-// `_` is intentionally excluded — fill-in-the-blank fields ("Date: ____")
-// and ASCII rules are legitimate underscore runs (would break zero-FP).
-const TOFU_RUN = /[#?□▯�◻�]{3,}/;
+// ≥3 consecutive box / replacement glyphs (□ ▯ ◻ U+FFFD) in user-facing
+// text. These appear when a font cannot render a codepoint OR a backend
+// dumps unknown chars as placeholders. Real content does not contain runs
+// of these glyphs. `#`, `?`, and `_` are intentionally excluded — emphatic
+// punctuation ("Sure???"), markdown-ish `###`, fill-in fields ("Date: ____")
+// and ASCII rules are all legitimate ASCII runs that would break zero-FP.
+const TOFU_RUN = /[□▯◻�]{3,}/;
 
 // M4 — Filesystem-artifact-in-title.
 // Track titles dragged from filenames before ID3 tag was read. Heuristic:

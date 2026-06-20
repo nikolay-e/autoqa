@@ -42,7 +42,7 @@ The following are explicitly out of scope. Use the linked tool instead:
 
 ## Success metrics
 
-1. **Trust the gate**: zero `continue-on-error: true`. A failing AutoQA step must always represent a real new finding.
+1. **Trust the gate**: a failing AutoQA run must always represent a real new finding. Every tool step runs under `continue-on-error: true` so one tool's crash never skips the rest; a single final `aggregate-gate` step then re-derives pass/fail from the report files and is the only step that can fail the build.
 2. **Adoption friction**: a downstream repo can enable AutoQA with one `uses:` line and one input (`url:`); every other input is opt-in.
 3. **Signal-to-noise**: on a PR with no regressions, baseline diff reports zero new findings.
 4. **Runtime**: full default run (crawler + baseline diff) completes within 5 minutes for a 10-page seed list.

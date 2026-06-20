@@ -15,7 +15,8 @@ TOKEN="${QA_AUTH_TOKEN:-}"
 # definition" when the spec's `servers` is empty or relative (e.g. `[{"url":"/"}]`).
 # Always rewrite to an absolute URL — schemathesis already does the same via --url.
 # Falls back to QA_BASE_URL when QA_SCHEMATHESIS_BASE_URL is not set. Ref: issue #6.
-ZAP_TARGET_URL="${QA_SCHEMATHESIS_BASE_URL:-${QA_BASE_URL%/}}"
+ZAP_TARGET_URL="${QA_SCHEMATHESIS_BASE_URL:-${QA_BASE_URL}}"
+ZAP_TARGET_URL="${ZAP_TARGET_URL%/}"
 if command -v jq >/dev/null 2>&1; then
   jq --arg u "${ZAP_TARGET_URL}" '.servers = [{"url": $u}]' \
     /tmp/qa-reports/openapi.json > /tmp/qa-reports/openapi-zap.json

@@ -316,9 +316,14 @@ runs:
         key: autoqa-baseline-${{ github.repository }}-${{ github.ref_name }}-${{ github.sha }}
 
     - name: Upload screenshots to Argos
-      if: inputs.crawler-enabled == 'true' && inputs.argos-enabled == 'true' && inputs.argos-token != ''
+      if: inputs.crawler-enabled == 'true' && inputs.argos-enabled == 'true'
       shell: bash
-      run: npx --yes @argos-ci/cli@latest upload /tmp/qa-reports/screenshots
+      run: |
+        if [ -z "${ARGOS_TOKEN}" ]; then
+          echo "Skipping Argos upload — argos-enabled=true but argos-token is empty"
+          exit 0
+        fi
+        npx --yes @argos-ci/cli@latest upload /tmp/qa-reports/screenshots
       env:
         ARGOS_TOKEN: ${{ inputs.argos-token }}
 
@@ -357,7 +362,7 @@ runs:
         QA_GATE_MECHANICAL_ENABLED: ${{ inputs.crawler-enabled }}
         QA_GATE_OBSERVATORY_ENABLED: ${{ inputs.observatory-enabled }}
         QA_GATE_AUTHZ_ENABLED: ${{ inputs.authz-enabled }}
-        QA_GATE_CRAWLER_FAIL: ${{ inputs.crawler-fail-on-violations }}
+        QA_GATE_CRAWLER_FAIL: ${{ inputs.baseline-enabled == 'true' && 'true' || inputs.crawler-fail-on-violations }}
         QA_GATE_CRAWLER_DECORATIVE_PATHS: ${{ inputs.crawler-decorative-paths }}
         QA_GATE_SCHEMATHESIS_FAIL: ${{ inputs.schemathesis-fail-on-violations }}
         QA_GATE_ZAP_FAIL: ${{ inputs.zap-fail-on-violations }}

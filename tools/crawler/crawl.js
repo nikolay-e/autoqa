@@ -36,8 +36,7 @@ const SCREENSHOT_DIR =
   process.env.CRAWL_SCREENSHOT_DIR || "/tmp/qa-reports/screenshots";
 const ARGOS_ENABLED = process.env.CRAWL_ARGOS_ENABLED === "true";
 
-const CSP_VIOLATION_PATTERN =
-  /Refused to (load|connect|apply|execute|run|frame|create|send)|Content Security Policy directive/i;
+const CSP_VIOLATION_PATTERN = /Content Security Policy/i;
 
 const visited = new Set();
 const queue = [];
@@ -46,6 +45,7 @@ const results = {
   jsErrors: [],
   networkErrors: [],
   axeViolations: [],
+  axeErrors: [],
   brokenLinks: [],
   consoleWarnings: [],
   cspViolations: [],
@@ -92,9 +92,13 @@ async function login(page, retries = 3) {
       await page.fill(LOGIN_SELECTOR_USERNAME, USERNAME);
       await page.fill(LOGIN_SELECTOR_PASSWORD, PASSWORD);
       await page.click(LOGIN_SELECTOR_SUBMIT);
-      await page.waitForURL((url) => !url.toString().includes(LOGIN_URL), {
-        timeout: 30000,
-      });
+      await page.waitForURL(
+        (url) => {
+          const p = new URL(url).pathname;
+          return p !== LOGIN_URL && !p.startsWith(`${LOGIN_URL}/`);
+        },
+        { timeout: 30000 },
+      );
       await page.waitForTimeout(1000);
       return;
     } catch (err) {
@@ -177,7 +181,7 @@ async function crawlPage(page, path) {
       return;
     }
     if (type === "error") {
-      if (!text.includes("Failed to load resource")) {
+      if (!text.startsWith("Failed to load resource:")) {
         pageErrors.push({
           path,
           error: `console.error: ${text}`,
@@ -208,7 +212,10 @@ async function crawlPage(page, path) {
   page.on("response", (response) => {
     const status = response.status();
     const url = response.url();
-    if (status >= 400 && !isExcluded(url)) {
+    const isMainNavigation =
+      response.request().isNavigationRequest() &&
+      response.frame() === page.mainFrame();
+    if (status >= 400 && !isMainNavigation && !isExcluded(url)) {
       networkFailures.push({
         path,
         url,
@@ -261,11 +268,12 @@ async function crawlPage(page, path) {
           description: violation.description,
           nodes: violation.nodes.length,
           target,
-          fingerprint: fingerprint("axe", violation.id, target, path),
+          fingerprint: fingerprint("axe", violation.id, path),
         });
       }
-    } catch {
-      // axe can fail on some pages
+    } catch (err) {
+      results.axeErrors.push({ path, error: err.message });
+      console.log(`  axe failed on ${path}: ${err.message}`);
     }
 
     await captureScreenshots(page, path);
@@ -439,6 +447,9 @@ function printReport() {
   console.log(`JS errors: ${results.jsErrors.length}`);
   console.log(`Network errors: ${results.networkErrors.length}`);
   console.log(`Axe violations: ${results.axeViolations.length}`);
+  if (results.axeErrors.length > 0) {
+    console.log(`Axe FAILED to run on ${results.axeErrors.length} page(s)`);
+  }
   console.log(`Broken links: ${results.brokenLinks.length}`);
   console.log(`CSP violations: ${results.cspViolations.length}`);
   console.log(`Mixed content: ${results.mixedContent.length}`);

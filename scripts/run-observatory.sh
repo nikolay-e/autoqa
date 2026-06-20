@@ -40,6 +40,12 @@ FAILED=$(python3 -c "import json; print(json.load(open('${OBS_JSON}')).get('test
 
 echo "Grade: ${GRADE} · Score: ${SCORE} · Tests: ${PASSED} passed / ${FAILED} failed"
 
+if [ -z "${GRADE}" ]; then
+  echo "Observatory returned no grade (scan pending or unexpected payload)"
+  echo "Treating as non-fatal — not failing the gate on a missing grade"
+  exit 0
+fi
+
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
   {
     echo ""

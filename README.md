@@ -6,15 +6,15 @@ Automated post-deploy quality assurance as a reusable GitHub Action.
 
 ## Tools
 
-| Tool                         | What it does                                                                  | Default |
-| ---------------------------- | ----------------------------------------------------------------------------- | ------- |
-| **Playwright crawler**       | Pages, JS errors, broken links, axe WCAG2a/2aa, CSP + mixed-content listeners | on      |
-| **Crawler baseline diff**    | Fails PRs only on **new** findings vs the cached `main` baseline              | on      |
-| **Mozilla HTTP Observatory** | Security-headers grade (CSP, HSTS, X-Frame-Options, SRI…)                     | off     |
-| **Schemathesis**             | Property-based API fuzzing against OpenAPI                                    | off     |
-| **OWASP ZAP**                | DAST scan against the same OpenAPI spec                                       | off     |
-| **Argos visual regression**  | Screenshots at 1440×900 + 375×667; PR diff review                             | off     |
-| **AuthZ matrix**             | Two-token BOLA / OWASP API1:2023 check on resource paths                      | off     |
+| Tool                         | What it does                                                                                  | Default |
+| ---------------------------- | --------------------------------------------------------------------------------------------- | ------- |
+| **Playwright crawler**       | Pages, JS errors, broken links, network errors, axe WCAG2a/2aa, CSP + mixed-content listeners | on      |
+| **Crawler baseline diff**    | Fails PRs only on **new** findings vs the cached `main` baseline                              | on      |
+| **Mozilla HTTP Observatory** | Security-headers grade (CSP, HSTS, X-Frame-Options, SRI…)                                     | off     |
+| **Schemathesis**             | Property-based API fuzzing against OpenAPI                                                    | off     |
+| **OWASP ZAP**                | DAST scan against the same OpenAPI spec                                                       | off     |
+| **Argos visual regression**  | Screenshots at 1440×900 + 375×667; PR diff review                                             | off     |
+| **AuthZ matrix**             | Two-token BOLA / OWASP API1:2023 check on resource paths                                      | off     |
 
 Everything except the crawler + baseline diff is opt-in.
 
@@ -32,7 +32,7 @@ jobs:
           url: https://your-app.com
 ```
 
-On a PR this fails only on **new** axe / JS / broken-link / CSP / mixed-content findings vs the last `main` baseline. On a push to `main` the baseline is overwritten.
+On a PR this fails only on **new** axe / JS / broken-link / network-error / CSP / mixed-content findings vs the last `main` baseline. On a push to `main` the baseline is overwritten. (When the baseline cache is cold — first run or a 7-day cache eviction — findings are not treated as new and the gate is skipped, not failed on the whole inventory.)
 
 ## Examples
 
@@ -127,7 +127,7 @@ All tools write to `/tmp/qa-reports/` and upload as the `autoqa-reports` artifac
 - `screenshots/*.png` — visual regression captures
 - `schemathesis.txt`, `zap.txt`, `zap-report.json`, `openapi.json` — when enabled
 
-The crawler also appends a markdown diff table to `$GITHUB_STEP_SUMMARY` on every run.
+The crawler appends a markdown baseline-diff table to `$GITHUB_STEP_SUMMARY` on every run with baseline diff enabled (the default); the final gate appends its own summary on every run regardless.
 
 ## License
 
