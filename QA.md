@@ -28,7 +28,20 @@ The autoqa self-test on `example.com` only exercises a narrow happy path (no aut
 
 **Every `/qa` pass on this repo MUST:**
 
-1. Enumerate every consumer of `nikolay-e/autoqa` via `gh search code 'nikolay-e/autoqa@' --owner nikolay-e --json repository --jq '.[].repository.nameWithOwner' | sort -u`.
+1. Enumerate every consumer. **`gh search code` is LOSSY — do not trust it as the authoritative list** (its index missed `life-as-code` and `yay-tsa`, both real consumers, on 2026-06-20). The authoritative sweep lists ALL repos and greps each one's workflows directly:
+
+   ```bash
+   gh repo list nikolay-e --limit 200 --json name --jq '.[].name' | while IFS= read -r repo; do
+     gh api "repos/nikolay-e/$repo/contents/.github/workflows" --jq '.[].name' 2>/dev/null | while IFS= read -r f; do
+       [ -z "$f" ] && continue
+       gh api "repos/nikolay-e/$repo/contents/.github/workflows/$f" --jq '.content' 2>/dev/null | base64 -d \
+         | grep -q 'nikolay-e/autoqa@' && echo "$repo/$f"
+     done
+   done
+   ```
+
+   Note the `while IFS= read -r` loops: **zsh does not word-split unquoted `$files`** like bash, so a naive `for f in $files` iterates once over the whole blob and silently finds nothing. Current consumers (2026-06-20): `lingua-quiz`, `toy-projects`, `life-as-code`, `yay-tsa` (4 app repos) + autoqa's own self-test. `gh search code 'nikolay-e/autoqa@'` only returned 3 of them.
+
 2. For each consumer: pull the most recent `post-deploy-qa` (or equivalent) CI log with `gh run list -R <repo> --workflow=ci.yml --limit 5` → `gh run view -R <repo> --job <id> --log`.
 3. Grep each log for symptoms that originate in autoqa code (not in the consumer's app):
    - `Permission denied:.*zap-report` → autoqa ZAP container perms
@@ -107,7 +120,7 @@ Opt-in gate input that downgrades 4xx network errors / broken links whose URL ma
 
 ## ZAP HIGH false-positives (#7, RESOLVED via opt-in path allowlist)
 
-The gate counts every `riskcode==3` ZAP alert as blocking. A boolean-based SQLi alert on a rate-limited (429) / auth-gated (403) endpoint is a FP — the differential ZAP saw is the limiter, not the DB. The `-J` traditional report does not carry per-instance HTTP status, so the gate cannot read the 429 directly. Resolved the same way #11 was: a deterministic opt-in path allowlist (`zap-rate-limited-paths`) instead of a flaky one-shot re-probe. `aggregate-gate.mjs gateZap` downgrades a HIGH alert from blocking to non-blocking `info` only when **every** `alert.instances[].uri` matches a declared path; an alert that also fires on an un-gated path still blocks, and an alert with no instance data fails safe (stays blocking). Default empty = zero behaviour change. Verified with synthetic `zap-report.json` fixtures (all-match → exit 0; mixed/empty-list/no-instances → exit 1). The rejected re-probe approach was flaky: the rate-limit window can reset between scan and re-probe, flipping a 429 to 200. Note: a consumer that runs its OWN duplicate `Gate on ZAP HIGH findings` step would need the same allowlist there — none of the current consumers (lingua-quiz, toy-projects) do.
+The gate counts every `riskcode==3` ZAP alert as blocking. A boolean-based SQLi alert on a rate-limited (429) / auth-gated (403) endpoint is a FP — the differential ZAP saw is the limiter, not the DB. The `-J` traditional report does not carry per-instance HTTP status, so the gate cannot read the 429 directly. Resolved the same way #11 was: a deterministic opt-in path allowlist (`zap-rate-limited-paths`) instead of a flaky one-shot re-probe. `aggregate-gate.mjs gateZap` downgrades a HIGH alert from blocking to non-blocking `info` only when **every** `alert.instances[].uri` matches a declared path; an alert that also fires on an un-gated path still blocks, and an alert with no instance data fails safe (stays blocking). Default empty = zero behaviour change. Verified with synthetic `zap-report.json` fixtures (all-match → exit 0; mixed/empty-list/no-instances → exit 1). The rejected re-probe approach was flaky: the rate-limit window can reset between scan and re-probe, flipping a 429 to 200. Note: a consumer that runs its OWN duplicate `Gate on ZAP HIGH findings` step would defeat this fix (the duplicate ignores `zap-rate-limited-paths`). `yay-tsa` had exactly such a step; it was **removed** (2026-06-20) so the autoqa gate is the single owner of ZAP HIGH gating. Future consumers must not reintroduce a standalone `riskcode==3` gate — wire `zap-rate-limited-paths` into the autoqa `with:` block instead.
 
 ## .auth-token is write-only (latent, low-risk)
 
