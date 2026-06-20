@@ -66,6 +66,31 @@ function isDecorative(category, ...haystacks) {
   );
 }
 
+// HIGH ZAP alerts on endpoints fronted by a rate limiter / auth gate are false
+// positives: the differential ZAP measured (typically boolean-based SQLi) is the
+// limiter's 429/403, not a real DB-level injection — the attack never reached the
+// database. The traditional -J report carries no per-instance HTTP status, so the
+// gate cannot see the 429 directly; instead the consumer declares the rate-limited
+// / auth-gated paths and a HIGH alert is downgraded to non-blocking info only when
+// EVERY one of its instances targets such a path (an alert that also fires on an
+// un-gated path still blocks, and an alert with no instance data fails safe and
+// stays blocking). Default empty — opt-in, no behaviour change. Ref: issue #7.
+const ZAP_RATE_LIMITED_PATHS = (
+  process.env.QA_GATE_ZAP_RATE_LIMITED_PATHS || ""
+)
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+function allInstancesRateLimited(alert) {
+  if (ZAP_RATE_LIMITED_PATHS.length === 0) return false;
+  const instances = alert.instances || [];
+  if (instances.length === 0) return false;
+  return instances.every(
+    (i) => i.uri && ZAP_RATE_LIMITED_PATHS.some((p) => i.uri.includes(p)),
+  );
+}
+
 const findings = [];
 
 function record(tool, severity, message, details = null) {
@@ -310,12 +335,26 @@ function gateZap() {
   }
   const sites = data.site || [];
   const highs = [];
+  const downgraded = [];
   for (const site of sites) {
     for (const alert of site.alerts || []) {
       if (String(alert.riskcode) === "3") {
-        highs.push(`${alert.name} (${alert.riskdesc || "High"})`);
+        const label = `${alert.name} (${alert.riskdesc || "High"})`;
+        if (allInstancesRateLimited(alert)) {
+          downgraded.push(label);
+        } else {
+          highs.push(label);
+        }
       }
     }
+  }
+  if (downgraded.length > 0) {
+    record(
+      "zap",
+      "info",
+      `${downgraded.length} HIGH ZAP alert(s) downgraded — every instance on a declared rate-limited/auth-gated path (#7)`,
+      downgraded.slice(0, 10),
+    );
   }
   if (highs.length > 0) {
     record(

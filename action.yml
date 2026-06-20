@@ -97,6 +97,9 @@ inputs:
   zap-fail-on-violations:
     description: "Fail the composite action when ZAP reports HIGH-risk alerts."
     default: "true"
+  zap-rate-limited-paths:
+    description: "Comma-separated URL substrings for endpoints fronted by a rate limiter / auth gate (e.g. /api/auth/login). A HIGH ZAP alert (typically boolean-based SQLi) on such a path is a false positive — the differential ZAP measured is the limiter's 429/403, not a DB-level injection; the attack never reached the database. The traditional -J report carries no per-instance HTTP status, so the gate cannot see the 429 directly; instead a HIGH alert is downgraded by the final gate from blocking to non-blocking info only when EVERY one of its instances targets a declared path (an alert that also fires on an un-gated path still blocks). Empty = off. Ref: issue #7."
+    default: ""
 
   observatory-enabled:
     description: "Run MDN HTTP Observatory security-headers scan"
@@ -358,6 +361,7 @@ runs:
         QA_GATE_CRAWLER_DECORATIVE_PATHS: ${{ inputs.crawler-decorative-paths }}
         QA_GATE_SCHEMATHESIS_FAIL: ${{ inputs.schemathesis-fail-on-violations }}
         QA_GATE_ZAP_FAIL: ${{ inputs.zap-fail-on-violations }}
+        QA_GATE_ZAP_RATE_LIMITED_PATHS: ${{ inputs.zap-rate-limited-paths }}
         QA_GATE_MECHANICAL_FAIL: ${{ inputs.mechanical-fail-on-violations }}
         QA_GATE_OBSERVATORY_FAIL: ${{ inputs.observatory-fail-on-violations }}
         QA_GATE_AUTHZ_FAIL: ${{ inputs.authz-fail-on-violations }}

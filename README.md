@@ -83,6 +83,14 @@ visible in the report instead of dropping them silently.
 
 For each `authz-resource-paths` entry the action expects: token A → 2xx, token B → 401/403/404, no token → 401/403/404. Anything else fails the build.
 
+`zap-rate-limited-paths` (e.g. `/api/auth/login`) downgrades a HIGH ZAP alert
+from blocking to non-blocking info when **every** instance of that alert targets a
+declared rate-limited / auth-gated path. ZAP's traditional report carries no
+per-instance HTTP status, so a boolean-based SQLi alert whose differential is
+really the limiter's 429/403 (the attack never reached the DB) otherwise reds the
+gate. The alert still blocks if it also fires on an un-gated path, and an alert
+with no instance data fails safe and stays blocking. Default empty — opt-in.
+
 ### Visual regression with Argos
 
 ```yaml
