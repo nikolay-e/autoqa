@@ -92,6 +92,27 @@ The autoqa self-test on `example.com` only exercises a narrow happy path (no aut
 
 - The mojibake guard at `scripts/mechanical-checks.mjs:53` uses `/[-ɏ]/` written as two raw Unicode chars (U+0080 .. U+024F) separated by a literal `-` in the source bytes. The U+0080 (PADDING CHARACTER) is invisible in most editors and **gets dropped if you paste the file content through a shell heredoc** — the resulting copy becomes `/[-ɏ]/` which matches only literal hyphen or U+024F. If editing this regex, work with the file via `Edit`/`Read` tools, never via `cat <<EOF`. Validate end-to-end with `node -e 'const re = require("fs").readFileSync("scripts/mechanical-checks.mjs","utf8").match(/return (\/\[.+?\]\/)/)[1]; console.log(eval("("+re+")").test("Ð¡ÐµÑ€Ð³ÐµÐ¹"))'` — should print `true`.
 
+## Consumer-sweep triage: schemathesis text/html by status class
+
+A consumer gate-fail of `schemathesis reported N failure(s)` is NOT automatically an autoqa bug — read the FAILURES block and split by status:
+
+- **text/html 4xx** whose only finding is an undocumented content-type → a pre-servlet container rejection of malformed input (Tomcat/nginx/CDN URI parser), classified non-blocking by `classifySchemathesis`. Neither an app bug nor an autoqa bug.
+- **text/html 5xx** (e.g. 502/500 on a malformed/binary body) → a REAL consumer resilience bug: the app must reject bad input with 400/422, not crash/sever the upstream into a 5xx. File it in the consumer repo, not here. The classifier deliberately keeps 5xx text/html blocking.
+
+Schemathesis 4.x reports auth-negative coverage (401 on auth-protected ops) as a separate `Authentication failed: N operations` notice, NOT inside the `N failed` count the gate parses — so documented 401s no longer red the gate (this closed #8; no autoqa code change was needed, the version behaviour already separates them).
+
+## crawler-decorative-paths (resolves #11 part 1)
+
+Opt-in gate input that downgrades 4xx network errors / broken links whose URL matches a pattern (e.g. `/Images/`) from blocking to non-blocking info. Solves the per-item-id case (`/Items/<id>/Images/Primary`) where every missing-asset URL is a unique fingerprint that never settles into the baseline and keeps surfacing as fresh. Default empty = zero behaviour change; consumers wire it in their autoqa `with:` block. Verified with synthetic baseline-diff + crawler-findings fixtures (baseline and non-baseline modes).
+
+## ZAP HIGH false-positives (#7, still OPEN)
+
+The gate counts every `riskcode==3` ZAP alert as blocking. A boolean-based SQLi alert on a rate-limited (429) / auth-gated (403) endpoint is a FP — the differential ZAP saw is the limiter, not the DB. A file-only gate fix is not possible: the ZAP `-J` traditional report does not reliably carry per-instance HTTP status. Needs either a report variant that includes per-instance status (then drop alerts whose every instance is 429/403) or a one-shot re-probe in `run-zap.sh`. Note: some consumers (yay-tsa) also run their OWN `Gate on ZAP HIGH findings` step that duplicates the autoqa ZAP gate — any #7 fix must cover both.
+
+## .auth-token is write-only (latent, low-risk)
+
+`auth.sh` and `auth-playwright.mjs` write the bearer token to `/tmp/qa-reports/.auth-token`, but nothing reads it — every consumer uses the `QA_AUTH_TOKEN` env var instead. It is not uploaded today (dotfile + `upload-artifact` v7 excludes hidden files by default), so there is no live leak, but it is a latent secret-on-disk that relies entirely on that default. Cleanup is safe but do NOT edit the auth scripts blind: the self-test runs against example.com with no auth, so a regression there would not be caught by CI.
+
 ---
 
 Generic QA patterns live in the `/qa` skill — do not duplicate here.
