@@ -44,6 +44,28 @@ const FAIL_ON = {
   authz: flag("QA_GATE_AUTHZ_FAIL", "true"),
 };
 
+// Decorative-resource paths (e.g. /Images/) whose 4xx network errors / broken
+// links are expected when the underlying optional asset is genuinely absent —
+// the API's correct answer is 404 and the UI renders a placeholder. Each such
+// URL usually carries a unique id (/Items/<id>/Images/Primary), so it never
+// settles into the baseline and keeps surfacing as a NEW finding. When the
+// consumer opts in via crawler-decorative-paths, matching 4xx crawler findings
+// are downgraded to non-blocking info instead of failing the gate. Default
+// empty — opt-in, no behaviour change for existing consumers. Ref: issue #11.
+const DECORATIVE_PATHS = (process.env.QA_GATE_CRAWLER_DECORATIVE_PATHS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+const DECORATIVE_CATEGORIES = new Set(["networkErrors", "brokenLinks"]);
+
+function isDecorative(category, ...haystacks) {
+  if (DECORATIVE_PATHS.length === 0) return false;
+  if (!DECORATIVE_CATEGORIES.has(category)) return false;
+  return haystacks.some(
+    (h) => h && DECORATIVE_PATHS.some((p) => h.includes(p)),
+  );
+}
+
 const findings = [];
 
 function record(tool, severity, message, details = null) {
@@ -85,7 +107,21 @@ function gateCrawler() {
       );
       return;
     }
-    const fresh = diff.fresh || [];
+    const freshAll = diff.fresh || [];
+    const decorative = freshAll.filter((f) =>
+      isDecorative(f.category, f.summary, f.path),
+    );
+    const fresh = freshAll.filter((f) => !decorative.includes(f));
+    if (decorative.length > 0) {
+      record(
+        "crawler",
+        "info",
+        `${decorative.length} decorative-resource 4xx finding(s) downgraded (matched crawler-decorative-paths)`,
+        decorative
+          .slice(0, 10)
+          .map((f) => `${f.label || f.category} @ ${f.path}: ${f.summary}`),
+      );
+    }
     if (fresh.length > 0) {
       const baselineUpdatedOnMainPush =
         diff.eventName === "push" && ["main", "master"].includes(diff.refName);
@@ -101,10 +137,27 @@ function gateCrawler() {
     return;
   }
 
+  const networkErrors = (data.networkErrors || []).filter(
+    (e) => !isDecorative("networkErrors", e.url, e.path),
+  );
+  const brokenLinks = (data.brokenLinks || []).filter(
+    (e) => !isDecorative("brokenLinks", e.url, e.path),
+  );
+  const decoCount =
+    (data.networkErrors || []).length -
+    networkErrors.length +
+    ((data.brokenLinks || []).length - brokenLinks.length);
+  if (decoCount > 0) {
+    record(
+      "crawler",
+      "info",
+      `${decoCount} decorative-resource 4xx finding(s) downgraded (matched crawler-decorative-paths)`,
+    );
+  }
   const counts = {
     jsErrors: (data.jsErrors || []).length,
-    brokenLinks: (data.brokenLinks || []).length,
-    networkErrors: (data.networkErrors || []).length,
+    brokenLinks: brokenLinks.length,
+    networkErrors: networkErrors.length,
     cspViolations: (data.cspViolations || []).length,
     mixedContent: (data.mixedContent || []).length,
     critAxe: (data.axeViolations || []).filter((v) => v.impact === "critical")

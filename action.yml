@@ -57,6 +57,9 @@ inputs:
   crawler-console-ignore:
     description: "Comma-separated substrings matched against console message text or source script URL; matching messages are dropped from error reporting (third-party noise such as CDN bot-challenge probes)"
     default: ""
+  crawler-decorative-paths:
+    description: "Comma-separated URL substrings (e.g. /Images/) for optional decorative resources. 4xx network errors / broken links whose URL matches are downgraded by the final gate from a blocking finding to non-blocking info — for assets that are legitimately absent (404 is the correct API answer and the UI renders a placeholder) and whose per-item ids keep them from settling into the baseline. Empty = off."
+    default: ""
   crawler-fail-on-violations:
     description: "Fail the composite action when the crawler reports violations (broken links, JS errors, critical axe, CSP, mixed content, network errors). Honored by the final gate step. Ignored when baseline-enabled=true (baseline diff governs instead)."
     default: "true"
@@ -352,6 +355,7 @@ runs:
         QA_GATE_OBSERVATORY_ENABLED: ${{ inputs.observatory-enabled }}
         QA_GATE_AUTHZ_ENABLED: ${{ inputs.authz-enabled }}
         QA_GATE_CRAWLER_FAIL: ${{ inputs.crawler-fail-on-violations }}
+        QA_GATE_CRAWLER_DECORATIVE_PATHS: ${{ inputs.crawler-decorative-paths }}
         QA_GATE_SCHEMATHESIS_FAIL: ${{ inputs.schemathesis-fail-on-violations }}
         QA_GATE_ZAP_FAIL: ${{ inputs.zap-fail-on-violations }}
         QA_GATE_MECHANICAL_FAIL: ${{ inputs.mechanical-fail-on-violations }}

@@ -54,6 +54,13 @@ On a PR this fails only on **new** axe / JS / broken-link / CSP / mixed-content 
 drops console messages whose text or originating script URL matches any
 comma-separated pattern (e.g. third-party bot-challenge noise).
 
+`crawler-decorative-paths` (e.g. `/Images/`) downgrades 4xx network errors /
+broken links on optional decorative assets from a blocking finding to
+non-blocking info — for resources that are legitimately absent (404 is the
+correct answer, the UI shows a placeholder) and whose per-item ids keep them
+from settling into the baseline. Unlike `crawler-exclude-urls` it keeps them
+visible in the report instead of dropping them silently.
+
 ### App with login + API fuzzing + ZAP + AuthZ
 
 ```yaml
