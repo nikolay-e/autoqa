@@ -54,11 +54,13 @@ function looksLikeMojibake(s) {
 }
 
 // M2 — Tofu / replacement-glyph runs.
-// ≥3 consecutive of #, ?, _, □, ▯, � in user-facing text. These appear
+// ≥3 consecutive of #, ?, □, ▯, � in user-facing text. These appear
 // when a font cannot render a codepoint OR a backend dumps unknown
 // chars as placeholders. Real content does not contain runs like this
 // (markdown headers `###` are stripped before reaching the DOM).
-const TOFU_RUN = /[#?_□▯�◻�]{3,}/;
+// `_` is intentionally excluded — fill-in-the-blank fields ("Date: ____")
+// and ASCII rules are legitimate underscore runs (would break zero-FP).
+const TOFU_RUN = /[#?□▯�◻�]{3,}/;
 
 // M4 — Filesystem-artifact-in-title.
 // Track titles dragged from filenames before ID3 tag was read. Heuristic:
