@@ -26,7 +26,7 @@ Project-specific QA methodology learnings for this repo. Generic patterns live i
 
 The autoqa self-test on `example.com` exercises a narrow happy path (no auth, no OpenAPI, no ZAP, no AuthZ matrix, single seed page) plus a short **monkey** run (`monkey-enabled`, 15s, seed 1337) and an **image build/publish** job. Real defects in autoqa surface against the CONSUMER apps — Cloudflare interactions, login redirects, OpenAPI variants, ZAP container quirks, schemathesis edge cases, etc. A green self-test does NOT mean autoqa is healthy.
 
-> **Two consumer surfaces (post-migration).** Only **`yay-tsa`** still consumes autoqa as a **GitHub Action** (`uses: nikolay-e/autoqa@<sha>`) — the `gh`-based sweep below finds it. **`lingua-quiz`, `life-as-code`, `toy-projects`** migrated to Forgejo + Argo Workflows and now consume the **portable image** via gitops (a per-app `submit-autoqa` sensor trigger → the `autoqa` WorkflowTemplate, `ci/ci-platform/` in the gitops repo), NOT a `.github/workflows` pin. For those, the run log is the Argo Workflow pod (`kubectl -n argo-workflows logs -l workflows.argoproj.io/workflow=<app>-autoqa-<id>`), and "is it wired" is the gitops sensor/WorkflowTemplate, not a workflow-file grep.
+> **Two consumer surfaces (post-migration).** Only **`yay-tsa`** still consumes autoqa as a **GitHub Action** (`uses: nikolay-e/autoqa@<sha>`) — the `gh`-based sweep below finds it. The **Argo Workflows** consumers run the **portable image** via gitops (a per-app `submit-autoqa` sensor trigger → the `autoqa` WorkflowTemplate, `ci/ci-platform/` in the gitops repo), NOT a `.github/workflows` pin. As of 2026-06-21 there are **8** of them — enumerate authoritatively from the sensors, never from memory (the set keeps growing): `grep -rl submit-autoqa ~/gitops/kubernetes/ci/ci-platform/sensor-*-image.yaml`. Current set: `andrii-bardakov-com`, `life-as-code`, `lingua-quiz`, `nikolay-eremeev-com`, `pflegescore`, `tanyalytvyn-com`, `toy-projects`, `wealth-as-code`. For those, the run log is the Argo Workflow pod (`kubectl -n argo-workflows logs <app>-autoqa-<id>`), and "is it wired" is the gitops sensor/WorkflowTemplate, not a workflow-file grep.
 
 **Every `/qa` pass on this repo MUST:**
 
@@ -42,7 +42,7 @@ The autoqa self-test on `example.com` exercises a narrow happy path (no auth, no
    done
    ```
 
-   Note the `while IFS= read -r` loops: **zsh does not word-split unquoted `$files`** like bash, so a naive `for f in $files` iterates once over the whole blob and silently finds nothing. **Post-migration (2026-06-21) this `.github/workflows` sweep only finds `yay-tsa`** — the only remaining GitHub-Action consumer. `lingua-quiz`, `life-as-code`, `toy-projects` moved to Argo (see the two-surfaces note above); enumerate them from the gitops `submit-autoqa` sensors (`grep -rl submit-autoqa ~/gitops/kubernetes/ci/ci-platform/`), not from `gh`.
+   Note the `while IFS= read -r` loops: **zsh does not word-split unquoted `$files`** like bash, so a naive `for f in $files` iterates once over the whole blob and silently finds nothing. **Post-migration (2026-06-21) this `.github/workflows` sweep only finds `yay-tsa`** — the only remaining GitHub-Action consumer. The 8 Argo consumers (see the two-surfaces note above) are enumerated from the gitops `submit-autoqa` sensors (`grep -rl submit-autoqa ~/gitops/kubernetes/ci/ci-platform/`), not from `gh`.
 
 2. For each consumer: pull the most recent `post-deploy-qa` (or equivalent) CI log with `gh run list -R <repo> --workflow=ci.yml --limit 5` → `gh run view -R <repo> --job <id> --log`.
 3. Grep each log for symptoms that originate in autoqa code (not in the consumer's app):
@@ -114,7 +114,9 @@ A consumer gate-fail of `schemathesis reported N failure(s)` is NOT automaticall
 - **text/html 4xx** whose only finding is an undocumented content-type → a pre-servlet container rejection of malformed input (Tomcat/nginx/CDN URI parser), classified non-blocking by `classifySchemathesis`. Neither an app bug nor an autoqa bug.
 - **text/html 5xx** (e.g. 502/500 on a malformed/binary body) → a REAL consumer resilience bug: the app must reject bad input with 400/422, not crash/sever the upstream into a 5xx. File it in the consumer repo, not here. The classifier deliberately keeps 5xx text/html blocking.
 
-Schemathesis 4.x reports auth-negative coverage (401 on auth-protected ops) as a separate `Authentication failed: N operations` notice, NOT inside the `N failed` count the gate parses — so documented 401s no longer red the gate (this closed #8; no autoqa code change was needed, the version behaviour already separates them).
+Schemathesis 4.x reports auth-negative coverage (401 on auth-protected ops) as a separate `Authentication failed: N operations` notice, NOT inside the `N failed` count the gate parses — so documented 401s no longer red the gate (this closed #8; no autoqa code change was needed, the version behaviour already separates them). Verified live on the yay-tsa sweep 2026-06-21: a 71-operation `Authentication failed` block sat in WARNINGS while the gate counted only the one real failure.
+
+**Cloudflare `52x` origin-error on malformed schemathesis input is a CONSUMER finding, never a classifier downgrade.** yay-tsa sweep 2026-06-21 surfaced a blocking `POST /v1/sessions/{sessionId}/signals → Received: 520` (CF "Web server is returning an unknown error" HTML page) when schemathesis sent a null-byte body + undecodable `%`-encoded path param. `classifySchemathesis` correctly kept it blocking (text/html **5xx** stays blocking by design — see "Composite `continue-on-error`" gate rules). Do **NOT** add a `520`–`524`/`530` downgrade to the classifier to silence these: a 52x on malformed input is exactly the origin-crash-on-bad-input case we WANT to catch (the app should answer `400/422`, not sever the upstream into a CF 520). A genuinely rollout-transient 520 (origin mid-restart) is indistinguishable in one report, so the right fix lives in the consumer's rollout-wait gate, not in autoqa. Filed as `yay-tsa#252`.
 
 ## crawler-decorative-paths (resolves #11 part 1)
 
@@ -160,6 +162,21 @@ The gate counts every `riskcode==3` ZAP alert as blocking. A boolean-based SQLi 
   and a future noble bump.
 - The image publishes to `ghcr.io/${{ github.repository }}` from the `image` job in
   `ci.yml` (buildx + QEMU, `linux/amd64,linux/arm64`, `main-<sha>` + `latest`, push only on `main`).
+
+## CI `image` job — docker/\* action pins
+
+- The `image` job pins five `docker/*` actions (`setup-qemu`, `setup-buildx`,
+  `login`, `metadata`, `build-push`). GitHub raises a **"Node.js 20 is deprecated …
+  forced to run on Node.js 24"** annotation for any version still on the node20
+  runtime. Bump the pinned SHA to the latest **node24** release on each `/qa` pass
+  (the `v-major` releases that say "Node 24 as default runtime" in their notes:
+  qemu `v4`, buildx `v4`, login `v4`, metadata `v6`, build-push `v7`). These majors
+  are drop-in (node24 + internal ESM refactor + removal of deprecated inputs we
+  don't use). Bumped 2026-06-21 → annotation cleared. Keep the `# <tag>` comment on
+  each pin (SonarCloud `new_security_hotspots_reviewed` requires SHA-pins).
+- **`Failed to save: Unable to reserve cache with key docker.io--tonistiigi--binfmt-…`**
+  on `setup-qemu` is **benign** — a binfmt-image cache reservation race, harmless on
+  every multi-arch run. Do not chase it.
 
 ---
 
