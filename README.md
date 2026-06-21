@@ -15,6 +15,7 @@ Automated post-deploy quality assurance as a reusable GitHub Action.
 | **OWASP ZAP**                | DAST scan against the same OpenAPI spec                                                       | off     |
 | **Argos visual regression**  | Screenshots at 1440×900 + 375×667; PR diff review                                             | off     |
 | **AuthZ matrix**             | Two-token BOLA / OWASP API1:2023 check on resource paths                                      | off     |
+| **Monkey / chaos**           | Seeded random Playwright clicking/typing for a time budget; hunts crashes, uncaught JS, 5xx   | off     |
 
 Everything except the crawler + baseline diff is opt-in.
 
@@ -91,6 +92,30 @@ really the limiter's 429/403 (the attack never reached the DB) otherwise reds th
 gate. The alert still blocks if it also fires on an un-gated path, and an alert
 with no instance data fails safe and stays blocking. Default empty — opt-in.
 
+### Monkey / chaos UI test (try to break it)
+
+```yaml
+- uses: nikolay-e/autoqa@main
+  with:
+    url: https://your-app.com
+    monkey-enabled: "true"
+    monkey-duration-ms: "300000" # 5 minutes
+    crawler-username: test # optional — monkey logs in first
+    crawler-password: ${{ secrets.QA_PASSWORD_A }}
+    monkey-fail-on-violations: "true" # opt in to blocking on serious findings
+```
+
+The monkey drives the real GUI with **seeded** random actions (clicks, fuzz-string
+typing, key presses, selects, scrolling, back/forward) for the time budget, then
+reports every crash, uncaught JS error, and 5xx it triggered. The run is reproducible:
+the same `monkey-seed` replays the same action sequence, and the seed is printed in the
+report so a crash can be reproduced. Safety rails keep it useful — it stays on the
+app's origin, auto-dismisses dialogs, closes popups, and avoids `monkey-avoid-text`
+controls (logout/delete by default) so it does not end the session early. It is
+advisory by default; `console.error` and failed requests are always non-blocking info,
+and only crashes / uncaught errors / 5xx block the gate (and only when
+`monkey-fail-on-violations: "true"`).
+
 ### Visual regression with Argos
 
 ```yaml
@@ -124,6 +149,7 @@ All tools write to `/tmp/qa-reports/` and upload as the `autoqa-reports` artifac
 - `baseline-diff.json` — new / persistent / fixed summary
 - `observatory.json` — Observatory grade + per-test breakdown
 - `authz-matrix.json` — per-path A/B/no-auth status codes and issues
+- `monkey-findings.json` — seed, action count, and deduped chaos findings (when enabled)
 - `screenshots/*.png` — visual regression captures
 - `schemathesis.txt`, `zap.txt`, `zap-report.json`, `openapi.json` — when enabled
 

@@ -134,6 +134,28 @@ inputs:
     description: "Fail the composite action when the AuthZ matrix reports BOLA / auth-bypass."
     default: "true"
 
+  monkey-enabled:
+    description: "Run the monkey / chaos UI tester — seeded random Playwright interactions (clicks, fuzz input, keys, navigation) for a time budget, hunting crashes, uncaught JS errors and 5xx responses. Opt-in. Reuses crawler-username/password/login selectors to log in first."
+    default: "false"
+  monkey-duration-ms:
+    description: "Monkey time budget in milliseconds (default 300000 = 5 minutes). A hard-kill backstop fires 30s after this."
+    default: "300000"
+  monkey-seed:
+    description: "Seed for the monkey's PRNG. Same seed + same app replays the same action sequence; the seed is logged in the report so a crash can be reproduced."
+    default: "1337"
+  monkey-seed-pages:
+    description: "Comma-separated paths the monkey starts from and resets to when it gets stuck (default '/')."
+    default: "/"
+  monkey-avoid-text:
+    description: "Comma-separated lowercased text / aria-label substrings the monkey will NOT click, so it does not log itself out or delete data and end the session early. Set empty to allow destructive controls."
+    default: "logout,log out,sign out,signout,delete account,deactivate,remove account"
+  monkey-exclude-urls:
+    description: "Comma-separated URL substrings to ignore in monkey error reporting (third-party noise)."
+    default: ""
+  monkey-fail-on-violations:
+    description: "Fail the composite action when the monkey finds a serious issue (crash / uncaught JS error / 5xx). Default off — the monkey is advisory because exploration is inherently variable; console errors and failed requests are always non-blocking info."
+    default: "false"
+
 outputs:
   report-path:
     description: "Directory containing all reports"
@@ -156,6 +178,12 @@ outputs:
   mixed-content:
     description: "Number of mixed-content requests captured"
     value: ${{ steps.crawler.outputs.mixed-content }}
+  monkey-actions:
+    description: "Number of monkey actions performed"
+    value: ${{ steps.monkey.outputs.monkey-actions }}
+  monkey-serious:
+    description: "Number of serious monkey findings (crashes / uncaught errors / 5xx)"
+    value: ${{ steps.monkey.outputs.monkey-serious }}
 
 runs:
   using: "composite"
@@ -254,13 +282,13 @@ runs:
         QA_OBSERVATORY_FAIL_GRADE: ${{ inputs.observatory-fail-grade }}
 
     - name: Setup Node.js
-      if: always() && (inputs.crawler-enabled == 'true' || inputs.authz-enabled == 'true' || inputs.argos-enabled == 'true')
+      if: always() && (inputs.crawler-enabled == 'true' || inputs.authz-enabled == 'true' || inputs.argos-enabled == 'true' || inputs.monkey-enabled == 'true')
       uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
       with:
         node-version: "22"
 
     - name: Install crawler dependencies
-      if: always() && inputs.crawler-enabled == 'true'
+      if: always() && (inputs.crawler-enabled == 'true' || inputs.monkey-enabled == 'true')
       shell: bash
       continue-on-error: true
       run: cd ${{ github.action_path }}/tools/crawler && npm ci && npx playwright install chromium
@@ -340,6 +368,28 @@ runs:
         QA_AUTHZ_USER_B_BODY: ${{ inputs.authz-user-b-body }}
         QA_AUTHZ_RESOURCE_PATHS: ${{ inputs.authz-resource-paths }}
 
+    - name: Monkey chaos UI test
+      id: monkey
+      if: always() && inputs.monkey-enabled == 'true'
+      shell: bash
+      continue-on-error: true
+      run: node ${{ github.action_path }}/tools/crawler/monkey.js 2>&1 | tee /tmp/qa-reports/monkey.txt
+      env:
+        MONKEY_URL: ${{ inputs.url }}
+        MONKEY_USERNAME: ${{ inputs.crawler-username }}
+        MONKEY_PASSWORD: ${{ inputs.crawler-password }}
+        MONKEY_LOGIN_URL: ${{ inputs.crawler-login-url }}
+        MONKEY_LOGIN_SELECTOR_USERNAME: ${{ inputs.crawler-login-selector-username }}
+        MONKEY_LOGIN_SELECTOR_PASSWORD: ${{ inputs.crawler-login-selector-password }}
+        MONKEY_LOGIN_SELECTOR_SUBMIT: ${{ inputs.crawler-login-selector-submit }}
+        MONKEY_SEED_PAGES: ${{ inputs.monkey-seed-pages }}
+        MONKEY_DURATION_MS: ${{ inputs.monkey-duration-ms }}
+        MONKEY_SEED: ${{ inputs.monkey-seed }}
+        MONKEY_AVOID_TEXT: ${{ inputs.monkey-avoid-text }}
+        MONKEY_EXCLUDE_URLS: ${{ inputs.monkey-exclude-urls }}
+        MONKEY_FAIL_ON_VIOLATIONS: ${{ inputs.monkey-fail-on-violations }}
+        MONKEY_FINDINGS_PATH: /tmp/qa-reports/monkey-findings.json
+
     - name: Upload QA reports
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -370,4 +420,6 @@ runs:
         QA_GATE_MECHANICAL_FAIL: ${{ inputs.mechanical-fail-on-violations }}
         QA_GATE_OBSERVATORY_FAIL: ${{ inputs.observatory-fail-on-violations }}
         QA_GATE_AUTHZ_FAIL: ${{ inputs.authz-fail-on-violations }}
+        QA_GATE_MONKEY_ENABLED: ${{ inputs.monkey-enabled }}
+        QA_GATE_MONKEY_FAIL: ${{ inputs.monkey-fail-on-violations }}
         QA_OBSERVATORY_FAIL_GRADE: ${{ inputs.observatory-fail-grade }}

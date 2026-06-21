@@ -21,6 +21,7 @@ jobs:
       - run: cd tools/crawler && npm ci
       - run: npx prettier --check "**/*.{js,mjs,json,yml,yaml,md}"
       - run: node --check tools/crawler/crawl.js
+      - run: node --check tools/crawler/monkey.js
       - run: node --check scripts/baseline-diff.mjs
       - run: node --check scripts/run-authz-matrix.mjs
       - run: node --check scripts/auth-playwright.mjs
@@ -42,3 +43,6 @@ jobs:
           baseline-enabled: "true"
           observatory-enabled: "true"
           observatory-fail-grade: "F"
+          monkey-enabled: "true"
+          monkey-duration-ms: "15000"
+          monkey-seed: "1337"

@@ -33,6 +33,7 @@ const ENABLED = {
   mechanical: flag("QA_GATE_MECHANICAL_ENABLED", "true"),
   observatory: flag("QA_GATE_OBSERVATORY_ENABLED", "false"),
   authz: flag("QA_GATE_AUTHZ_ENABLED", "false"),
+  monkey: flag("QA_GATE_MONKEY_ENABLED", "false"),
 };
 
 const FAIL_ON = {
@@ -42,6 +43,7 @@ const FAIL_ON = {
   mechanical: flag("QA_GATE_MECHANICAL_FAIL", "false"),
   observatory: flag("QA_GATE_OBSERVATORY_FAIL", "true"),
   authz: flag("QA_GATE_AUTHZ_FAIL", "true"),
+  monkey: flag("QA_GATE_MONKEY_FAIL", "false"),
 };
 
 // Decorative-resource paths (e.g. /Images/) whose 4xx network errors / broken
@@ -432,12 +434,60 @@ function gateAuthz() {
   }
 }
 
+function gateMonkey() {
+  if (!ENABLED.monkey) return;
+  const path = `${REPORTS}/monkey-findings.json`;
+  if (!existsSync(path)) {
+    record(
+      "monkey",
+      "warn",
+      "monkey-findings.json missing — monkey step did not run",
+    );
+    return;
+  }
+  const data = readJson(path);
+  if (!data) {
+    record("monkey", "warn", "monkey-findings.json is not valid JSON");
+    return;
+  }
+  const all = data.findings || [];
+  const serious = all.filter((f) => f.serious);
+  const advisory = all.filter((f) => !f.serious);
+  if (advisory.length > 0) {
+    record(
+      "monkey",
+      "info",
+      `${advisory.length} non-blocking monkey finding(s) (console errors / failed requests)`,
+      advisory
+        .slice(0, 10)
+        .map(
+          (f) =>
+            `${f.kind} ×${f.count} @ ${f.where}: ${f.message.slice(0, 120)}`,
+        ),
+    );
+  }
+  if (serious.length > 0) {
+    record(
+      "monkey",
+      "fail",
+      `${serious.length} serious monkey finding(s) (crashes / uncaught errors / 5xx) — replay with seed ${data.seed}`,
+      serious
+        .slice(0, 10)
+        .map(
+          (f) =>
+            `${f.kind} ×${f.count} @ ${f.where}: ${f.message.slice(0, 120)}`,
+        ),
+    );
+  }
+}
+
 gateCrawler();
 gateSchemathesis();
 gateZap();
 gateMechanical();
 gateObservatory();
 gateAuthz();
+gateMonkey();
 
 const lines = ["## AutoQA — final gate\n"];
 lines.push(`Event: \`${EVENT_NAME || "local"}\`\n`);

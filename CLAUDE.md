@@ -13,6 +13,7 @@ Tools (all optional except crawler + baseline):
 5. **OWASP ZAP** — DAST against the OpenAPI spec
 6. **Argos visual regression** — 1440×900 + 375×667 screenshots, PR diff review
 7. **AuthZ matrix** — BOLA / OWASP API1:2023 two-token check
+8. **Monkey / chaos** — seeded random Playwright GUI interaction for a time budget; reports crashes / uncaught JS / 5xx
 
 ## Tech Stack
 
@@ -32,6 +33,7 @@ autoqa/
 ├── STRATEGY.md                      # In-scope / non-goals positioning
 ├── tools/crawler/
 │   ├── crawl.js                     # Playwright + axe + CSP + screenshots
+│   ├── monkey.js                    # seeded chaos/monkey UI fuzzer (Playwright)
 │   └── package.json
 ├── scripts/
 │   ├── auth.sh                      # Bearer token via /api auth
@@ -68,7 +70,7 @@ All tools write to `/tmp/qa-reports/`:
 - `crawler-findings.json` — fingerprinted crawler output
 - `baseline/baseline.json` — cached baseline (per consumer repo, per branch)
 - `baseline-diff.json` — new / persistent / fixed
-- `observatory.json`, `authz-matrix.json`
+- `observatory.json`, `authz-matrix.json`, `monkey-findings.json`
 - `screenshots/*.png` for Argos
 - `schemathesis.txt`, `zap.txt`, `zap-report.json`, `openapi.json`
 

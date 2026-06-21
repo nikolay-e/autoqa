@@ -25,6 +25,7 @@ Make post-deploy regression detection a single composite GitHub Action that one 
 - Visual regression via Argos (screenshots at 1440×900 and 375×667)
 - AuthZ two-token matrix for BOLA (OWASP API1:2023) on caller-supplied resource paths
 - Baseline diff: cached on `main`, restored on PRs, fail only on **new** findings
+- Monkey / chaos UI tester: **seeded** (reproducible) random Playwright interaction for a time budget, hunting crashes / uncaught JS / 5xx — opt-in, advisory by default
 
 ## Non-goals
 
@@ -38,7 +39,7 @@ The following are explicitly out of scope. Use the linked tool instead:
 | WARP-gated / private services                        | (run from inside the network)                                                                                        | The hosted GitHub runner cannot reach them.                                                                                                                                     |
 | Load and capacity testing                            | [k6 Cloud](https://k6.io/cloud/), [Artillery](https://artillery.io/)                                                 | A single CI runner caps around 1–2 k RPS — not a real load test.                                                                                                                |
 | Mutation testing of frontend code                    | [Stryker](https://stryker-mutator.io/)                                                                               | Hours of runtime — wrong tool for a post-deploy gate.                                                                                                                           |
-| Autonomous exploratory testing                       | [browser-use](https://github.com/browser-use/browser-use)                                                            | Non-deterministic; redundant with the BFS crawler for reachable surface.                                                                                                        |
+| LLM-driven autonomous exploratory testing            | [browser-use](https://github.com/browser-use/browser-use)                                                            | Non-deterministic and slow; the **seeded** monkey/chaos tester covers the random-interaction niche reproducibly, and the BFS crawler covers reachable surface.                  |
 
 ## Success metrics
 
@@ -49,7 +50,7 @@ The following are explicitly out of scope. Use the linked tool instead:
 
 ## Roadmap
 
-- **Now (shipped):** baseline diff, Mozilla Observatory, CSP + mixed-content listeners, Argos screenshots, AuthZ matrix
+- **Now (shipped):** baseline diff, Mozilla Observatory, CSP + mixed-content listeners, Argos screenshots, AuthZ matrix, seeded monkey/chaos UI tester
 - **Next:** sitemap-driven seed discovery, SPA route capture via `framenavigated`, sticky PR comment with diff summary
 - **Maybe:** Playwright project matrix (chromium + webkit + mobile-chrome) gated behind a `browsers:` input
 
