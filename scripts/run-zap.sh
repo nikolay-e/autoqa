@@ -40,6 +40,14 @@ if [ -n "${TOKEN}" ]; then
     -config replacer.full_list(0).replacement=\"Bearer ${TOKEN}\"")
 fi
 
+if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+  echo "Skipping ZAP — no usable Docker daemon."
+  echo "ZAP runs as the official zaproxy container. To use it from the autoqa"
+  echo "image, mount the host socket (-v /var/run/docker.sock:/var/run/docker.sock)"
+  echo "with a host-path report dir, or run ZAP via the GitHub Action path."
+  exit 0
+fi
+
 echo "Running OWASP ZAP..."
 # ZAP image runs as uid 1000; GitHub runner workspace is owned by uid 1001.
 # Make /tmp/qa-reports world-writable so ZAP can drop zap-report.json there.

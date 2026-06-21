@@ -1,0 +1,8 @@
+**/node_modules
+.git
+.github
+qa-reports
+*.log
+*.bak
+CORRECTNESS.md
+PRODUCT.md

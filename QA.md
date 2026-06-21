@@ -126,6 +126,39 @@ The gate counts every `riskcode==3` ZAP alert as blocking. A boolean-based SQLi 
 
 `auth.sh` and `auth-playwright.mjs` write the bearer token to `/tmp/qa-reports/.auth-token`, but nothing reads it — every consumer uses the `QA_AUTH_TOKEN` env var instead. It is not uploaded today (dotfile + `upload-artifact` v7 excludes hidden files by default), so there is no live leak, but it is a latent secret-on-disk that relies entirely on that default. Cleanup is safe but do NOT edit the auth scripts blind: the self-test runs against example.com with no auth, so a regression there would not be caught by CI.
 
+## Portable image (`run-all.sh`) — parity with action.yml
+
+`scripts/run-all.sh` is the container entrypoint and the CI-agnostic twin of
+`action.yml`. The two MUST stay in lockstep:
+
+- **Same step order, same per-tool gating.** When you add/reorder a tool or change
+  an `if:` condition in `action.yml`, mirror it in `run-all.sh` (and the gate env
+  block). They share the underlying `scripts/` + `tools/` — only the orchestration
+  is duplicated (GH-native caching/UI vs. a plain bash loop).
+- **Env interface:** action input `foo-bar` ⇒ image env `QA_FOO_BAR`. `run-all.sh`
+  maps those canonical `QA_*` vars onto the per-tool env the scripts actually read
+  (`CRAWL_*`, `MONKEY_*`, `QA_BASE_URL`, `QA_GATE_*`). Only `QA_URL` is required.
+- **Auth token hand-off** outside GitHub: `run-all.sh` points `GITHUB_ENV` at a
+  temp file, runs `auth.sh`/`auth-playwright.mjs` (which append `QA_AUTH_TOKEN=…`),
+  then sources it — reusing the existing mechanism without faking other GitHub vars.
+- **Baseline outside GitHub:** there is no `actions/cache`. `baseline-diff.mjs`
+  reads `QA_EVENT_NAME`/`QA_REF_NAME`/`QA_BASE_REF` as fallbacks for the GitHub
+  ones; the caller mounts a persistent volume at `QA_BASELINE_DIR`.
+- **ZAP** is intentionally NOT bundled (research: DinD path-translation makes a
+  sibling `docker run -v` resolve paths against the host daemon, so reports vanish;
+  bundling needs a JRE + add-on drift). `run-zap.sh` skips with a notice when no
+  Docker daemon is reachable. Run ZAP via the GitHub Action, a dedicated ZAP job,
+  or a mounted host socket with a host-path report dir.
+- **Base image tag MUST equal the `playwright` version in
+  `tools/crawler/package-lock.json`** (`v<X.Y.Z>-jammy`) — browser binaries are
+  pinned per release; a mismatch yields "browser executable doesn't exist." Bump
+  both together. `npm ci` installs only the driver; browsers come from the base
+  image (no `playwright install` in the Dockerfile).
+- **schemathesis** lives in a venv (`/opt/venv`) on PATH — PEP-668-safe on jammy
+  and a future noble bump.
+- The image publishes to `ghcr.io/${{ github.repository }}` from the `image` job in
+  `ci.yml` (buildx, `linux/amd64`, `main-<sha>` + `latest`, push only on `main`).
+
 ---
 
 Generic QA patterns live in the `/qa` skill — do not duplicate here.

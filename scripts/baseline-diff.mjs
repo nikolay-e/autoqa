@@ -14,9 +14,10 @@ const BASELINE_DIR = process.env.QA_BASELINE_DIR || "/tmp/qa-reports/baseline";
 const BASELINE_PATH = `${BASELINE_DIR}/baseline.json`;
 const DIFF_PATH = "/tmp/qa-reports/baseline-diff.json";
 const SUMMARY_PATH = process.env.GITHUB_STEP_SUMMARY || "";
-const EVENT_NAME = process.env.GITHUB_EVENT_NAME || "";
-const REF_NAME = process.env.GITHUB_REF_NAME || "";
-const BASE_REF = process.env.GITHUB_BASE_REF || "";
+const EVENT_NAME =
+  process.env.GITHUB_EVENT_NAME || process.env.QA_EVENT_NAME || "";
+const REF_NAME = process.env.GITHUB_REF_NAME || process.env.QA_REF_NAME || "";
+const BASE_REF = process.env.GITHUB_BASE_REF || process.env.QA_BASE_REF || "";
 const MAIN_BRANCHES = new Set(["main", "master"]);
 
 const CATEGORIES = [

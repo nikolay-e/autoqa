@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Reusable GitHub Action for automated post-deploy QA. Positioned as the **PR-blocking gate** in a 3-layer quality story (gate + synthetic monitoring + RUM); see [`STRATEGY.md`](STRATEGY.md).
+Reusable post-deploy QA, distributed two ways from one codebase: a **composite GitHub Action** ([`action.yml`](action.yml)) and a **portable container image** (`ghcr.io/nikolay-e/autoqa`, built from [`Dockerfile`](Dockerfile), orchestrated by [`scripts/run-all.sh`](scripts/run-all.sh)) for GitLab / Forgejo Actions / Argo Workflows / `docker run`. Positioned as the **PR-blocking gate** in a 3-layer quality story (gate + synthetic monitoring + RUM); see [`STRATEGY.md`](STRATEGY.md).
 
 Tools (all optional except crawler + baseline):
 
@@ -29,13 +29,15 @@ Tools (all optional except crawler + baseline):
 
 ```
 autoqa/
-├── action.yml                       # Composite GitHub Action
+├── action.yml                       # Composite GitHub Action (GH-native path)
+├── Dockerfile                       # Portable image (Playwright base + python venv)
 ├── STRATEGY.md                      # In-scope / non-goals positioning
 ├── tools/crawler/
 │   ├── crawl.js                     # Playwright + axe + CSP + screenshots
 │   ├── monkey.js                    # seeded chaos/monkey UI fuzzer (Playwright)
 │   └── package.json
 ├── scripts/
+│   ├── run-all.sh                   # CI-agnostic orchestrator (image entrypoint)
 │   ├── auth.sh                      # Bearer token via /api auth
 │   ├── run-schemathesis.sh
 │   ├── run-zap.sh

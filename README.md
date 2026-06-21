@@ -137,6 +137,76 @@ Create the repo at <https://app.argos-ci.com/> first to obtain `ARGOS_TOKEN`. Fr
     baseline-enabled: "false"
 ```
 
+## Run as a Docker image (any CI)
+
+AutoQA ships as both a GitHub Action **and** a self-contained image, so the same
+pipeline runs in GitLab CI, Forgejo/Gitea Actions, Argo Workflows, or plain
+`docker run` — anywhere a container runs.
+
+```bash
+docker run --rm \
+  -e QA_URL=https://your-app.com \
+  -e QA_MONKEY_ENABLED=true \
+  -v "$PWD/qa-reports:/tmp/qa-reports" \
+  ghcr.io/nikolay-e/autoqa:latest
+```
+
+The container runs every enabled tool in order and exits **0 (pass) / 1 (fail)** —
+the one universal gate signal. Reports land in `QA_OUTPUT_DIR` (default
+`/tmp/qa-reports`); mount it to collect artifacts.
+
+**Env interface.** Each GitHub Action input maps to an env var: `foo-bar` →
+`QA_FOO_BAR`. Only `QA_URL` is required; everything else mirrors the
+[`action.yml`](action.yml) defaults. Common ones: `QA_URL`, `QA_OUTPUT_DIR`,
+`QA_CRAWLER_SEED_PAGES`, `QA_CRAWLER_MAX_PAGES`, `QA_BASELINE_ENABLED`,
+`QA_SCHEMATHESIS_ENABLED`, `QA_OPENAPI_URL`, `QA_OBSERVATORY_ENABLED`,
+`QA_AUTHZ_ENABLED`, `QA_MONKEY_ENABLED`, `QA_MONKEY_DURATION_MS`,
+`QA_AUTH_URL` + `QA_AUTH_BODY` (auth), `QA_CRAWLER_USERNAME` /
+`QA_CRAWLER_PASSWORD` (form login).
+
+**Baseline persistence.** Outside GitHub there is no `actions/cache`; mount a
+persistent volume at `QA_BASELINE_DIR` (default `<output>/baseline`) and set
+`QA_EVENT_NAME` (`push`/`pull_request`) + `QA_REF_NAME` (branch) so the baseline
+seeds on `main` pushes and gates PRs on new findings only.
+
+**ZAP** needs a Docker daemon (it runs the official `zaproxy` container); it is
+skipped with a notice when none is available. Mount the host socket
+(`-v /var/run/docker.sock:/var/run/docker.sock`, host-path report dir) or use the
+GitHub Action path. Every other tool runs fully inside the image.
+
+### CI snippets
+
+```yaml
+# GitLab CI
+qa:
+  image: ghcr.io/nikolay-e/autoqa:latest
+  variables: { QA_URL: "https://your-app.com", QA_OUTPUT_DIR: "qa-reports" }
+  script: ["/opt/autoqa/scripts/run-all.sh"]
+  artifacts: { when: always, paths: ["qa-reports/"] }
+```
+
+```yaml
+# Forgejo / Gitea Actions
+jobs:
+  qa:
+    runs-on: docker
+    container:
+      image: ghcr.io/nikolay-e/autoqa:latest
+      env: { QA_URL: https://your-app.com, QA_MONKEY_ENABLED: "true" }
+    steps:
+      - run: /opt/autoqa/scripts/run-all.sh
+```
+
+```yaml
+# Argo Workflows
+- name: autoqa
+  container:
+    image: ghcr.io/nikolay-e/autoqa:latest
+    env:
+      - { name: QA_URL, value: "https://your-app.com" }
+    volumeMounts: [{ name: reports, mountPath: /tmp/qa-reports }]
+```
+
 ## Inputs
 
 See [`action.yml`](action.yml) for all inputs and their defaults.

@@ -14,7 +14,7 @@ If you only run a gate, you find regressions but miss outages. If you only run s
 
 ## Mission
 
-Make post-deploy regression detection a single composite GitHub Action that one engineer can adopt in fifteen minutes and trust to fail the build only on **new** problems, never on background noise.
+Make post-deploy regression detection a single composite GitHub Action — **and a portable container image** that runs the same pipeline in any CI (GitLab, Forgejo/Gitea Actions, Argo Workflows, plain `docker run`) — that one engineer can adopt in fifteen minutes and trust to fail the build only on **new** problems, never on background noise.
 
 ## In scope
 
@@ -50,7 +50,7 @@ The following are explicitly out of scope. Use the linked tool instead:
 
 ## Roadmap
 
-- **Now (shipped):** baseline diff, Mozilla Observatory, CSP + mixed-content listeners, Argos screenshots, AuthZ matrix, seeded monkey/chaos UI tester
+- **Now (shipped):** baseline diff, Mozilla Observatory, CSP + mixed-content listeners, Argos screenshots, AuthZ matrix, seeded monkey/chaos UI tester, portable container image (`ghcr.io/nikolay-e/autoqa`) for non-GitHub CI
 - **Next:** sitemap-driven seed discovery, SPA route capture via `framenavigated`, sticky PR comment with diff summary
 - **Maybe:** Playwright project matrix (chromium + webkit + mobile-chrome) gated behind a `browsers:` input
 
