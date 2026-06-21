@@ -6,16 +6,17 @@ Automated post-deploy quality assurance as a reusable GitHub Action.
 
 ## Tools
 
-| Tool                         | What it does                                                                                  | Default |
-| ---------------------------- | --------------------------------------------------------------------------------------------- | ------- |
-| **Playwright crawler**       | Pages, JS errors, broken links, network errors, axe WCAG2a/2aa, CSP + mixed-content listeners | on      |
-| **Crawler baseline diff**    | Fails PRs only on **new** findings vs the cached `main` baseline                              | on      |
-| **Mozilla HTTP Observatory** | Security-headers grade (CSP, HSTS, X-Frame-Options, SRI…)                                     | off     |
-| **Schemathesis**             | Property-based API fuzzing against OpenAPI                                                    | off     |
-| **OWASP ZAP**                | DAST scan against the same OpenAPI spec                                                       | off     |
-| **Argos visual regression**  | Screenshots at 1440×900 + 375×667; PR diff review                                             | off     |
-| **AuthZ matrix**             | Two-token BOLA / OWASP API1:2023 check on resource paths                                      | off     |
-| **Monkey / chaos**           | Seeded random Playwright clicking/typing for a time budget; hunts crashes, uncaught JS, 5xx   | off     |
+| Tool                          | What it does                                                                                          | Default           |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------- |
+| **Playwright crawler**        | Pages, JS errors, broken links, network errors, axe WCAG2a/2aa, CSP + mixed-content listeners         | on                |
+| **Crawler baseline diff**     | Fails PRs only on **new** findings vs the cached `main` baseline                                      | on                |
+| **Mechanical checks (M1–M6)** | Deterministic page-content assertions (mojibake, tofu, placeholder/FS-artifact text) on crawled pages | runs on, gate off |
+| **Mozilla HTTP Observatory**  | Security-headers grade (CSP, HSTS, X-Frame-Options, SRI…)                                             | off               |
+| **Schemathesis**              | Property-based API fuzzing against OpenAPI                                                            | off               |
+| **OWASP ZAP**                 | DAST scan against the same OpenAPI spec                                                               | off               |
+| **Argos visual regression**   | Screenshots at 1440×900 + 375×667; PR diff review                                                     | off               |
+| **AuthZ matrix**              | Two-token BOLA / OWASP API1:2023 check on resource paths                                              | off               |
+| **Monkey / chaos**            | Seeded random Playwright clicking/typing for a time budget; hunts crashes, uncaught JS, 5xx           | off               |
 
 Everything except the crawler + baseline diff is opt-in.
 
@@ -155,14 +156,18 @@ The container runs every enabled tool in order and exits **0 (pass) / 1 (fail)**
 the one universal gate signal. Reports land in `QA_OUTPUT_DIR` (default
 `/tmp/qa-reports`); mount it to collect artifacts.
 
-**Env interface.** Each GitHub Action input maps to an env var: `foo-bar` →
-`QA_FOO_BAR`. Only `QA_URL` is required; everything else mirrors the
-[`action.yml`](action.yml) defaults. Common ones: `QA_URL`, `QA_OUTPUT_DIR`,
-`QA_CRAWLER_SEED_PAGES`, `QA_CRAWLER_MAX_PAGES`, `QA_BASELINE_ENABLED`,
-`QA_SCHEMATHESIS_ENABLED`, `QA_OPENAPI_URL`, `QA_OBSERVATORY_ENABLED`,
-`QA_AUTHZ_ENABLED`, `QA_MONKEY_ENABLED`, `QA_MONKEY_DURATION_MS`,
-`QA_AUTH_URL` + `QA_AUTH_BODY` (auth), `QA_CRAWLER_USERNAME` /
-`QA_CRAWLER_PASSWORD` (form login).
+**Env interface.** Most GitHub Action inputs map to an env var: `foo-bar` →
+`QA_FOO_BAR` (`QA_URL` also accepts the alias `QA_BASE_URL`). Only `QA_URL` is
+required; everything else mirrors the [`action.yml`](action.yml) defaults. Common
+ones: `QA_URL`, `QA_OUTPUT_DIR`, `QA_CRAWLER_SEED_PAGES`, `QA_CRAWLER_MAX_PAGES`,
+`QA_BASELINE_ENABLED`, `QA_SCHEMATHESIS_ENABLED`, `QA_OPENAPI_URL`,
+`QA_OBSERVATORY_ENABLED`, `QA_AUTHZ_ENABLED`, `QA_MONKEY_ENABLED`,
+`QA_MONKEY_DURATION_MS`, `QA_AUTH_URL` + `QA_AUTH_BODY` (auth),
+`QA_CRAWLER_USERNAME` / `QA_CRAWLER_PASSWORD` (form login).
+
+**Running as root (k8s / Argo / `docker run` as root):** set `QA_NO_SANDBOX=true`
+so the crawler and monkey launch Chromium with `--no-sandbox --disable-dev-shm-usage`.
+Without it, Chromium's sandbox fails as root and both browser tools crash.
 
 **Baseline persistence.** Outside GitHub there is no `actions/cache`; mount a
 persistent volume at `QA_BASELINE_DIR` (default `<output>/baseline`) and set
@@ -198,12 +203,13 @@ jobs:
 ```
 
 ```yaml
-# Argo Workflows
+# Argo Workflows (Chromium runs as root in-cluster → QA_NO_SANDBOX)
 - name: autoqa
   container:
     image: ghcr.io/nikolay-e/autoqa:latest
     env:
       - { name: QA_URL, value: "https://your-app.com" }
+      - { name: QA_NO_SANDBOX, value: "true" }
     volumeMounts: [{ name: reports, mountPath: /tmp/qa-reports }]
 ```
 
@@ -220,6 +226,8 @@ All tools write to `/tmp/qa-reports/` and upload as the `autoqa-reports` artifac
 - `observatory.json` — Observatory grade + per-test breakdown
 - `authz-matrix.json` — per-path A/B/no-auth status codes and issues
 - `monkey-findings.json` — seed, action count, and deduped chaos findings (when enabled)
+- `mechanical-findings.json` — M1–M6 mechanical property-check findings (P0/P1)
+- `crawler-pages.json` — per-page text/structure capture (input to mechanical checks)
 - `screenshots/*.png` — visual regression captures
 - `schemathesis.txt`, `zap.txt`, `zap-report.json`, `openapi.json` — when enabled
 

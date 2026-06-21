@@ -24,7 +24,9 @@ Project-specific QA methodology learnings for this repo. Generic patterns live i
 
 ## Consumer-repo log sweep (MANDATORY on every `/qa` autoqa pass)
 
-The autoqa self-test on `example.com` only exercises a narrow happy path (no auth, no OpenAPI, no ZAP, no AuthZ matrix, single seed page). Real defects in autoqa surface in the `post-deploy-qa` jobs of the CONSUMER repos that pin `nikolay-e/autoqa@<sha>` — Cloudflare interactions, login redirects, OpenAPI variants, ZAP container quirks, schemathesis edge cases, etc. A green self-test does NOT mean autoqa is healthy.
+The autoqa self-test on `example.com` exercises a narrow happy path (no auth, no OpenAPI, no ZAP, no AuthZ matrix, single seed page) plus a short **monkey** run (`monkey-enabled`, 15s, seed 1337) and an **image build/publish** job. Real defects in autoqa surface against the CONSUMER apps — Cloudflare interactions, login redirects, OpenAPI variants, ZAP container quirks, schemathesis edge cases, etc. A green self-test does NOT mean autoqa is healthy.
+
+> **Two consumer surfaces (post-migration).** Only **`yay-tsa`** still consumes autoqa as a **GitHub Action** (`uses: nikolay-e/autoqa@<sha>`) — the `gh`-based sweep below finds it. **`lingua-quiz`, `life-as-code`, `toy-projects`** migrated to Forgejo + Argo Workflows and now consume the **portable image** via gitops (a per-app `submit-autoqa` sensor trigger → the `autoqa` WorkflowTemplate, `ci/ci-platform/` in the gitops repo), NOT a `.github/workflows` pin. For those, the run log is the Argo Workflow pod (`kubectl -n argo-workflows logs -l workflows.argoproj.io/workflow=<app>-autoqa-<id>`), and "is it wired" is the gitops sensor/WorkflowTemplate, not a workflow-file grep.
 
 **Every `/qa` pass on this repo MUST:**
 
@@ -40,7 +42,7 @@ The autoqa self-test on `example.com` only exercises a narrow happy path (no aut
    done
    ```
 
-   Note the `while IFS= read -r` loops: **zsh does not word-split unquoted `$files`** like bash, so a naive `for f in $files` iterates once over the whole blob and silently finds nothing. Current consumers (2026-06-20): `lingua-quiz`, `toy-projects`, `life-as-code`, `yay-tsa` (4 app repos) + autoqa's own self-test. `gh search code 'nikolay-e/autoqa@'` only returned 3 of them.
+   Note the `while IFS= read -r` loops: **zsh does not word-split unquoted `$files`** like bash, so a naive `for f in $files` iterates once over the whole blob and silently finds nothing. **Post-migration (2026-06-21) this `.github/workflows` sweep only finds `yay-tsa`** — the only remaining GitHub-Action consumer. `lingua-quiz`, `life-as-code`, `toy-projects` moved to Argo (see the two-surfaces note above); enumerate them from the gitops `submit-autoqa` sensors (`grep -rl submit-autoqa ~/gitops/kubernetes/ci/ci-platform/`), not from `gh`.
 
 2. For each consumer: pull the most recent `post-deploy-qa` (or equivalent) CI log with `gh run list -R <repo> --workflow=ci.yml --limit 5` → `gh run view -R <repo> --job <id> --log`.
 3. Grep each log for symptoms that originate in autoqa code (not in the consumer's app):
@@ -157,7 +159,7 @@ The gate counts every `riskcode==3` ZAP alert as blocking. A boolean-based SQLi 
 - **schemathesis** lives in a venv (`/opt/venv`) on PATH — PEP-668-safe on jammy
   and a future noble bump.
 - The image publishes to `ghcr.io/${{ github.repository }}` from the `image` job in
-  `ci.yml` (buildx, `linux/amd64`, `main-<sha>` + `latest`, push only on `main`).
+  `ci.yml` (buildx + QEMU, `linux/amd64,linux/arm64`, `main-<sha>` + `latest`, push only on `main`).
 
 ---
 

@@ -17,8 +17,8 @@ Tools (all optional except crawler + baseline):
 
 ## Tech Stack
 
-- **Crawler**: Node.js 22, Playwright, @axe-core/playwright
-- **Baseline + AuthZ**: Node.js (mjs)
+- **Crawler / monkey**: Playwright + @axe-core/playwright. Node 22 on the GitHub Action path; the portable image runs Node from `mcr.microsoft.com/playwright:v1.59.1-jammy` (base tag pinned to the `playwright` lockfile version)
+- **Node mjs scripts**: baseline diff, AuthZ matrix, mechanical checks, aggregate gate, Playwright auth
 - **Schemathesis**: Python pip package
 - **ZAP**: Docker image `ghcr.io/zaproxy/zaproxy:stable`
 - **Observatory**: `npx @mdn/mdn-http-observatory`
@@ -42,9 +42,12 @@ autoqa/
 │   ├── run-schemathesis.sh
 │   ├── run-zap.sh
 │   ├── run-observatory.sh           # MDN HTTP Observatory
+│   ├── auth-playwright.mjs          # Bearer token via Playwright login (Cloudflare/Akamai)
 │   ├── baseline-diff.mjs            # Cache-restored diff, fails on new
-│   └── run-authz-matrix.mjs         # Two-token BOLA check
-└── .github/workflows/ci.yml         # Self-test
+│   ├── mechanical-checks.mjs        # Mechanical property checks (M1–M6)
+│   ├── run-authz-matrix.mjs         # Two-token BOLA check
+│   └── aggregate-gate.mjs           # Re-derives pass/fail from reports (gate authority)
+└── .github/workflows/ci.yml         # Self-test (lint + self-test + image build/publish)
 ```
 
 ## Development
@@ -73,6 +76,7 @@ All tools write to `/tmp/qa-reports/`:
 - `baseline/baseline.json` — cached baseline (per consumer repo, per branch)
 - `baseline-diff.json` — new / persistent / fixed
 - `observatory.json`, `authz-matrix.json`, `monkey-findings.json`
+- `mechanical-findings.json`, `crawler-pages.json`
 - `screenshots/*.png` for Argos
 - `schemathesis.txt`, `zap.txt`, `zap-report.json`, `openapi.json`
 

@@ -50,7 +50,7 @@ The following are explicitly out of scope. Use the linked tool instead:
 
 ## Roadmap
 
-- **Now (shipped):** baseline diff, Mozilla Observatory, CSP + mixed-content listeners, Argos screenshots, AuthZ matrix, seeded monkey/chaos UI tester, portable container image (`ghcr.io/nikolay-e/autoqa`) for non-GitHub CI
+- **Now (shipped):** baseline diff, mechanical property checks (M1–M6), single `aggregate-gate` pass/fail step, Mozilla Observatory, CSP + mixed-content listeners, Argos screenshots, AuthZ matrix, seeded monkey/chaos UI tester, multi-arch portable container image (`ghcr.io/nikolay-e/autoqa`, amd64+arm64) for non-GitHub CI
 - **Next:** sitemap-driven seed discovery, SPA route capture via `framenavigated`, sticky PR comment with diff summary
 - **Maybe:** Playwright project matrix (chromium + webkit + mobile-chrome) gated behind a `browsers:` input
 
