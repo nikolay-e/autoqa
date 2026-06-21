@@ -495,7 +495,13 @@ async function main() {
 
   console.log(`\nCrawling ${BASE_URL} (max ${MAX_PAGES} pages)\n`);
 
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: true,
+    args:
+      process.env.CRAWL_NO_SANDBOX === "true"
+        ? ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+        : [],
+  });
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
     ignoreHTTPSErrors: true,

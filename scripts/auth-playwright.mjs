@@ -60,7 +60,13 @@ if (!username || !password) {
 
 fs.mkdirSync(reportsDir, { recursive: true });
 
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({
+  headless: true,
+  args:
+    process.env.QA_NO_SANDBOX === "true"
+      ? ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+      : [],
+});
 const context = await browser.newContext({
   userAgent:
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",

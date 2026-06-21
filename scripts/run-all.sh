@@ -20,6 +20,8 @@ fi
 export QA_BASE_URL="${QA_URL}"
 
 : "${QA_OUTPUT_DIR:=/tmp/qa-reports}"
+: "${QA_NO_SANDBOX:=false}"
+export QA_NO_SANDBOX
 : "${QA_CRAWLER_ENABLED:=true}"
 : "${QA_BASELINE_ENABLED:=true}"
 : "${QA_SCHEMATHESIS_ENABLED:=false}"
@@ -119,6 +121,7 @@ if [ "${QA_CRAWLER_ENABLED}" != "false" ]; then
   export CRAWL_EXCLUDE_URLS="${QA_CRAWLER_EXCLUDE_URLS:-}"
   export CRAWL_CONSOLE_IGNORE="${QA_CRAWLER_CONSOLE_IGNORE:-}"
   export CRAWL_ARGOS_ENABLED="${QA_ARGOS_ENABLED}"
+  export CRAWL_NO_SANDBOX="${QA_NO_SANDBOX}"
   if [ "${QA_BASELINE_ENABLED}" = "true" ]; then
     export CRAWL_FAIL_ON_VIOLATIONS="false"
   else
@@ -172,6 +175,7 @@ if [ "${QA_MONKEY_ENABLED}" = "true" ]; then
   export MONKEY_EXCLUDE_URLS="${QA_MONKEY_EXCLUDE_URLS:-}"
   export MONKEY_FAIL_ON_VIOLATIONS="${QA_MONKEY_FAIL_ON_VIOLATIONS}"
   export MONKEY_FINDINGS_PATH="${REPORTS}/monkey-findings.json"
+  export MONKEY_NO_SANDBOX="${QA_NO_SANDBOX}"
   run_tool "monkey" node "${AUTOQA_HOME}/tools/crawler/monkey.js"
 fi
 
