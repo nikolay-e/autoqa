@@ -57,7 +57,8 @@ autoqa/
 cd tools/crawler && npm install
 CRAWL_URL=https://nikolay-eremeev.com CRAWL_MAX_PAGES=5 node crawl.js
 
-# Test baseline diff with a synthetic baseline
+# Test baseline diff with a synthetic baseline (crawler must have run first)
+mkdir -p /tmp/qa-reports/baseline
 echo '[]' > /tmp/qa-reports/baseline/baseline.json
 node scripts/baseline-diff.mjs
 
