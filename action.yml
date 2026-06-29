@@ -195,7 +195,7 @@ runs:
     - name: Restore crawler baseline
       id: baseline-restore
       if: inputs.crawler-enabled == 'true' && inputs.baseline-enabled == 'true'
-      uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: /tmp/qa-reports/baseline
         key: autoqa-baseline-${{ github.repository }}-${{ github.event.pull_request.base.ref || github.ref_name }}-${{ github.sha }}
