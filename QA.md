@@ -177,6 +177,62 @@ The gate counts every `riskcode==3` ZAP alert as blocking. A boolean-based SQLi 
 - **`Failed to save: Unable to reserve cache with key docker.io--tonistiigi--binfmt-…`**
   on `setup-qemu` is **benign** — a binfmt-image cache reservation race, harmless on
   every multi-arch run. Do not chase it.
+- Each `/qa` pass re-checks all five pins individually against `gh api repos/<action>/releases/latest`
+  even when the previous pass cleared the node24 annotation — patch releases land
+  between passes (e.g. `setup-qemu-action` v4.1.0 → v4.2.0, 2026-07-01, deps-only bump).
+
+## Reading Argo Workflows consumer logs when the pod is already GC'd
+
+`podGC: { strategy: OnWorkflowSuccess }` in the cluster's workflow-controller config
+deletes pods immediately on success, so `kubectl -n argo-workflows logs <wf-name>`
+fails with "not found" for anything but a currently-`Running` workflow — and there is
+no `argo` CLI installed to fall back on. `archiveLogs: true` means the log is still
+retrievable from the configured S3 (in-cluster MinIO) artifact repo:
+
+```bash
+kubectl -n argo-workflows get wf <name> -o jsonpath='{.status.nodes}' | grep -A3 '"s3"'
+# → key: <wf-name>/<wf-name>/main.log
+
+kubectl -n argo-workflows get secret argo-artifacts-minio -o jsonpath='{.data.accesskey}' | base64 -d
+kubectl -n argo-workflows get secret argo-artifacts-minio -o jsonpath='{.data.secretkey}' | base64 -d
+kubectl -n minio port-forward svc/minio 19000:9000 &
+brew install minio-mc   # one-time
+mc alias set argologs http://localhost:19000 <accesskey> <secretkey>
+mc cp argologs/argo-workflows-artifacts/<wf-name>/<wf-name>/main.log ./out.log
+```
+
+This is how the 8-Argo-consumer sweep pulled logs for workflows whose pods had
+already been garbage-collected (only currently-`Running` workflows have a live pod
+to `kubectl logs` directly).
+
+## Consumer sweep found a real app bug, not an autoqa bug (worked as designed)
+
+2026-07-01 sweep: `tanyalytvyn-com-autoqa-gzzng` showed `monkey` gate status `fail`
+(12 serious findings, all `http-5xx` on `/js/script.js` returning 502 site-wide,
+confirmed live with a direct `curl`). This is squarely a consumer-app production bug,
+not an autoqa symptom — filed `tanyalytvyn-com#26` and moved on, per the sweep's own
+rule 5 ("clearly the consumer's app problem... NOT autoqa findings").
+
+## diffctx over-dump: correct file list, wrong granularity (distinct from #65)
+
+`diffctx . --diff <range>` correctly scoped `changed_files` to the 5 files `git diff
+--stat` reported, but emitted each file's FULL current content as a single "changed"
+fragment instead of the actual hunk(s) — 18k tokens for a 65-line diff. This is a
+different bug than the already-tracked #65 (which pulls in _unrelated_ files); here
+the file selection was right and the per-file granularity was wrong. Filed
+`diffctx#91`. Narrowed the review with `git diff <range> -- <file>` per file per the
+gate's fallback procedure.
+
+## Shared working directory across concurrent `/qa` sessions
+
+This machine runs one clone of `~/autoqa`. A concurrent `/qa` session on a _different_
+repo (`yay-tsa`) traced a ZAP bare-origin bug back to autoqa mid-run, fixed it here
+(commit `b874675`), pushed, and filed+closed `autoqa#18` — all while this session's
+own consumer sweep was still in progress. `git log`/`git status` captured at session
+start can go stale if another agent is committing into the same physical directory;
+re-`fetch`/`git log` before assuming the local HEAD snapshot is still current,
+especially mid-sweep when consumer logs are being read concurrently with fixes
+landing.
 
 ---
 
