@@ -270,6 +270,7 @@ runs:
       run: bash ${{ github.action_path }}/scripts/run-zap.sh
       env:
         QA_BASE_URL: ${{ inputs.url }}
+        QA_SCHEMATHESIS_BASE_URL: ${{ inputs.schemathesis-base-url }}
 
     - name: Mozilla HTTP Observatory scan
       if: always() && inputs.observatory-enabled == 'true'
