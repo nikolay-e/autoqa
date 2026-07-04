@@ -138,6 +138,21 @@ Create the repo at <https://app.argos-ci.com/> first to obtain `ARGOS_TOKEN`. Fr
     baseline-enabled: "false"
 ```
 
+### Block on new findings in main-push-only pipelines (alarm-once)
+
+The stock baseline gate never blocks on push to main — new findings are
+absorbed into the baseline and only warn. If your only autoqa runs happen
+post-deploy on main (no PR runs), opt in to alarm-once gating: a NEW finding
+fails exactly that run, and the already-updated baseline keeps the next run
+green. First run with no cached baseline never blocks.
+
+```yaml
+- uses: nikolay-e/autoqa@main
+  with:
+    url: https://your-app.com
+    baseline-fail-on-new: "true"
+```
+
 ## Run as a Docker image (any CI)
 
 AutoQA ships as both a GitHub Action **and** a self-contained image, so the same
@@ -155,6 +170,15 @@ docker run --rm \
 The container runs every enabled tool in order and exits **0 (pass) / 1 (fail)** —
 the one universal gate signal. Reports land in `QA_OUTPUT_DIR` (default
 `/tmp/qa-reports`); mount it to collect artifacts.
+
+**COMPLETE report.** Every run also writes, alongside the raw per-tool artifacts:
+`findings.json` (one normalized `StandardFinding[]` across all tools) and
+`qa-report.md` + `qa-report.json` (human+machine report: exec summary, scope /
+coverage incl. what was _not_ tested, findings grouped by severity with locator
+and fix hint). These are always generated and never change the exit code — the
+gate stays the sole pass/fail authority; the report is the story a human reads.
+Bring your own checks via `extra-findings-path` (`QA_EXTRA_FINDINGS`): a JSON
+array of custom `StandardFinding`s merged into both the report and the gate feed.
 
 **Env interface.** Most GitHub Action inputs map to an env var: `foo-bar` →
 `QA_FOO_BAR` (`QA_URL` also accepts the alias `QA_BASE_URL`). Only `QA_URL` is

@@ -12,7 +12,7 @@ const FINDINGS_PATH =
   process.env.CRAWL_FINDINGS_PATH || "/tmp/qa-reports/crawler-findings.json";
 const BASELINE_DIR = process.env.QA_BASELINE_DIR || "/tmp/qa-reports/baseline";
 const BASELINE_PATH = `${BASELINE_DIR}/baseline.json`;
-const DIFF_PATH = "/tmp/qa-reports/baseline-diff.json";
+const DIFF_PATH = `${process.env.QA_REPORTS_DIR || "/tmp/qa-reports"}/baseline-diff.json`;
 const SUMMARY_PATH = process.env.GITHUB_STEP_SUMMARY || "";
 const EVENT_NAME =
   process.env.GITHUB_EVENT_NAME || process.env.QA_EVENT_NAME || "";
