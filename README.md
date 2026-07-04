@@ -138,6 +138,21 @@ Create the repo at <https://app.argos-ci.com/> first to obtain `ARGOS_TOKEN`. Fr
     baseline-enabled: "false"
 ```
 
+### Block on new findings in main-push-only pipelines (alarm-once)
+
+The stock baseline gate never blocks on push to main — new findings are
+absorbed into the baseline and only warn. If your only autoqa runs happen
+post-deploy on main (no PR runs), opt in to alarm-once gating: a NEW finding
+fails exactly that run, and the already-updated baseline keeps the next run
+green. First run with no cached baseline never blocks.
+
+```yaml
+- uses: nikolay-e/autoqa@main
+  with:
+    url: https://your-app.com
+    baseline-fail-on-new: "true"
+```
+
 ## Run as a Docker image (any CI)
 
 AutoQA ships as both a GitHub Action **and** a self-contained image, so the same
