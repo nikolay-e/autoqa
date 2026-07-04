@@ -67,6 +67,9 @@ inputs:
   baseline-enabled:
     description: "Diff crawler findings against cached baseline; fail PRs only on NEW findings (push to main updates baseline)"
     default: "true"
+  baseline-fail-on-new:
+    description: "Make NEW crawler findings blocking even on push to main/master. The baseline still updates in the same run, so a regression fails exactly one run and is absorbed for the next (alarm-once). For consumers whose only autoqa runs are post-deploy on main — without this the baseline gate can never block there. First run with no cached baseline never blocks."
+    default: "false"
 
   mechanical-fail-on-violations:
     description: "Fail the composite action when Phase 1.5 mechanical checks (M1–M6) report any P0 finding. P1 findings are always informational. Default off because mechanical checks are advisory."
@@ -151,6 +154,9 @@ inputs:
     default: "logout,log out,sign out,signout,delete account,deactivate,remove account"
   monkey-exclude-urls:
     description: "Comma-separated URL substrings to ignore in monkey error reporting (third-party noise)."
+    default: ""
+  monkey-console-ignore:
+    description: "Comma-separated substrings matched against monkey console-error text or source script URL; matching messages are dropped from error reporting. Falls back to crawler-console-ignore when empty."
     default: ""
   monkey-fail-on-violations:
     description: "Fail the composite action when the monkey finds a serious issue (crash / uncaught JS error / 5xx). Default off — the monkey is advisory because exploration is inherently variable; console errors and failed requests are always non-blocking info."
@@ -388,6 +394,7 @@ runs:
         MONKEY_SEED: ${{ inputs.monkey-seed }}
         MONKEY_AVOID_TEXT: ${{ inputs.monkey-avoid-text }}
         MONKEY_EXCLUDE_URLS: ${{ inputs.monkey-exclude-urls }}
+        MONKEY_CONSOLE_IGNORE: ${{ inputs.monkey-console-ignore != '' && inputs.monkey-console-ignore || inputs.crawler-console-ignore }}
         MONKEY_FAIL_ON_VIOLATIONS: ${{ inputs.monkey-fail-on-violations }}
         MONKEY_FINDINGS_PATH: /tmp/qa-reports/monkey-findings.json
 
@@ -414,6 +421,7 @@ runs:
         QA_GATE_OBSERVATORY_ENABLED: ${{ inputs.observatory-enabled }}
         QA_GATE_AUTHZ_ENABLED: ${{ inputs.authz-enabled }}
         QA_GATE_CRAWLER_FAIL: ${{ inputs.baseline-enabled == 'true' && 'true' || inputs.crawler-fail-on-violations }}
+        QA_GATE_BASELINE_FAIL_ON_NEW: ${{ inputs.baseline-fail-on-new }}
         QA_GATE_CRAWLER_DECORATIVE_PATHS: ${{ inputs.crawler-decorative-paths }}
         QA_GATE_SCHEMATHESIS_FAIL: ${{ inputs.schemathesis-fail-on-violations }}
         QA_GATE_ZAP_FAIL: ${{ inputs.zap-fail-on-violations }}
