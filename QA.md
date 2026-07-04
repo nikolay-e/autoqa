@@ -99,9 +99,17 @@ The autoqa self-test on `example.com` exercises a narrow happy path (no auth, no
 - Gates per tool: `crawler` (baseline-diff fresh count on PR; on push-to-main fresh findings only warn unless `baseline-fail-on-new=true` makes them fail that one run — alarm-once, the baseline update in the same run keeps the next run green; or any finding when baseline-enabled=false), `schemathesis` (schemathesis.txt grep `\d+ failed`), `zap` (`zap-report.json` alerts with `riskcode=3`), `mechanical` (P0 findings; default off — advisory), `observatory` (grade vs `observatory-fail-grade`), `authz` (`authz-matrix.json findings[].issues.length > 0`).
 - The gate is the LAST step in the composite, after artifact upload, so reports always upload even when the gate fails.
 
+## StandardFinding backbone + COMPLETE report
+
+- `lib/finding-schema.mjs` defines the one finding shape every tool normalizes into (`fingerprint`, `severity`∈critical/high/medium/low/info, `category`, `tool`, `url`, `locator`, `evidence[]`, `fix_hint`, `docs_url`, …). Dependency-free on purpose — a schema lib would be parity tax across the dual distribution (composite action + portable image) for a one-maintainer tool with checks this small.
+- `scripts/normalize-findings.mjs` reads every per-tool artifact and emits one validated `findings.json`. **Lenient by default** (invalid finding → warned + dropped, never affects a consumer gate); `--strict` / `QA_FINDINGS_STRICT=true` makes the first invalid finding exit 1 — used by `selftest.mjs` so a converter regression fails autoqa's OWN CI. The contract is enforced against fixtures, not against consumers.
+- Consumers extend without forking via `extra-findings-path` (`QA_EXTRA_FINDINGS`): a JSON array of custom StandardFindings, merged through the same validation.
+- `scripts/generate-qa-report.mjs` turns `findings.json` into `qa-report.md` + `qa-report.json` (exec summary, scope/coverage incl. what-was-NOT-tested, findings grouped by severity with locator + fix_hint). **Always-on and never gates** — the gate stays the sole pass/fail authority; the report is the story a human reads. Both are wired `continue-on-error: true` in `action.yml` and via `run_tool` in `run-all.sh`, before the gate.
+- `scripts/selftest.mjs` is the integration test (repo mandate: no unit tests). It drives the real gate + normalizer + report end-to-end against fixtures and runs in CI (`node scripts/selftest.mjs`). Note: the axe converter's `fix_hint`/`docs_url` come from `failureSummary`/`helpUrl`, which `crawl.js` only started capturing alongside this backbone — baselines captured by older crawler builds carry empty hints until re-seeded.
+
 ## CI lint coverage for new scripts
 
-- When adding a new top-level script (e.g., `scripts/foo.mjs`), also add an explicit `node --check scripts/foo.mjs` line to `.github/workflows/ci.yml` `lint` job — prettier check alone won't catch a syntax error. The lint job's syntax-check steps are an opt-in list, not a glob.
+- When adding a new top-level script (e.g., `scripts/foo.mjs`), also add an explicit `node --check scripts/foo.mjs` line to `.github/workflows/ci.yml` `lint` job — prettier check alone won't catch a syntax error. The lint job's syntax-check steps are an opt-in list, not a glob. Anything under `lib/` needs a `node --check` line too.
 
 ## mechanical-checks.mjs M1 invisible-char trap
 

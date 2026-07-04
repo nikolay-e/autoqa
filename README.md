@@ -171,6 +171,15 @@ The container runs every enabled tool in order and exits **0 (pass) / 1 (fail)**
 the one universal gate signal. Reports land in `QA_OUTPUT_DIR` (default
 `/tmp/qa-reports`); mount it to collect artifacts.
 
+**COMPLETE report.** Every run also writes, alongside the raw per-tool artifacts:
+`findings.json` (one normalized `StandardFinding[]` across all tools) and
+`qa-report.md` + `qa-report.json` (human+machine report: exec summary, scope /
+coverage incl. what was _not_ tested, findings grouped by severity with locator
+and fix hint). These are always generated and never change the exit code — the
+gate stays the sole pass/fail authority; the report is the story a human reads.
+Bring your own checks via `extra-findings-path` (`QA_EXTRA_FINDINGS`): a JSON
+array of custom `StandardFinding`s merged into both the report and the gate feed.
+
 **Env interface.** Most GitHub Action inputs map to an env var: `foo-bar` →
 `QA_FOO_BAR` (`QA_URL` also accepts the alias `QA_BASE_URL`). Only `QA_URL` is
 required; everything else mirrors the [`action.yml`](action.yml) defaults. Common

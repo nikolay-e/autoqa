@@ -182,6 +182,10 @@ if [ "${QA_MONKEY_ENABLED}" = "true" ]; then
   run_tool "monkey" node "${AUTOQA_HOME}/tools/crawler/monkey.js"
 fi
 
+# --- normalize + COMPLETE report (always-on, advisory — never gates) ----------
+run_tool "normalize-findings" node "${AUTOQA_HOME}/scripts/normalize-findings.mjs"
+run_tool "qa-report" node "${AUTOQA_HOME}/scripts/generate-qa-report.mjs"
+
 # --- final gate (the only step whose exit code propagates) --------------------
 echo ""
 echo "==================== aggregate-gate ===================="

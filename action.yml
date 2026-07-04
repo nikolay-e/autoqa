@@ -162,10 +162,20 @@ inputs:
     description: "Fail the composite action when the monkey finds a serious issue (crash / uncaught JS error / 5xx). Default off — the monkey is advisory because exploration is inherently variable; console errors and failed requests are always non-blocking info."
     default: "false"
 
+  extra-findings-path:
+    description: "Path to a JSON array of custom StandardFindings (fingerprint/severity/category/tool/title/url/…) from your own checks. Merged into the normalized findings.json and the COMPLETE report without forking autoqa. Invalid entries are dropped (warned), never fatal."
+    default: ""
+
 outputs:
   report-path:
     description: "Directory containing all reports"
     value: "/tmp/qa-reports"
+  complete-report-md:
+    description: "Path to the always-on human-readable COMPLETE QA report"
+    value: "/tmp/qa-reports/qa-report.md"
+  findings-json:
+    description: "Path to the normalized StandardFinding[] (machine-readable)"
+    value: "/tmp/qa-reports/findings.json"
   pages-visited:
     description: "Number of pages crawled"
     value: ${{ steps.crawler.outputs.pages-visited }}
@@ -397,6 +407,25 @@ runs:
         MONKEY_CONSOLE_IGNORE: ${{ inputs.monkey-console-ignore != '' && inputs.monkey-console-ignore || inputs.crawler-console-ignore }}
         MONKEY_FAIL_ON_VIOLATIONS: ${{ inputs.monkey-fail-on-violations }}
         MONKEY_FINDINGS_PATH: /tmp/qa-reports/monkey-findings.json
+
+    - name: Normalize findings (StandardFinding backbone)
+      if: always()
+      shell: bash
+      continue-on-error: true
+      run: node ${{ github.action_path }}/scripts/normalize-findings.mjs
+      env:
+        QA_REPORTS_DIR: /tmp/qa-reports
+        QA_EXTRA_FINDINGS: ${{ inputs.extra-findings-path }}
+
+    - name: Generate COMPLETE QA report
+      if: always()
+      shell: bash
+      continue-on-error: true
+      run: node ${{ github.action_path }}/scripts/generate-qa-report.mjs
+      env:
+        QA_REPORTS_DIR: /tmp/qa-reports
+        QA_URL: ${{ inputs.url }}
+        COMMIT_SHA: ${{ github.sha }}
 
     - name: Upload QA reports
       if: always()
