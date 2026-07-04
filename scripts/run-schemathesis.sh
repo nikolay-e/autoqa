@@ -27,8 +27,20 @@ if [ -n "${TOKEN}" ]; then
   CURL_ARGS+=(-H "Authorization: Bearer ${TOKEN}")
 fi
 
-if ! curl "${CURL_ARGS[@]}" "${SPEC_URL}" -o /tmp/qa-reports/openapi.json; then
-  echo "ERROR: failed to download OpenAPI spec from ${SPEC_URL}"
+# A single transient network blip (edge hiccup, momentary connection reset) shouldn't fail the
+# whole schemathesis+ZAP run — retry a few times with a short backoff before giving up.
+DOWNLOAD_OK=false
+for attempt in 1 2 3; do
+  if curl "${CURL_ARGS[@]}" "${SPEC_URL}" -o /tmp/qa-reports/openapi.json; then
+    DOWNLOAD_OK=true
+    break
+  fi
+  echo "Attempt ${attempt}/3 failed to download OpenAPI spec from ${SPEC_URL}; retrying in 5s"
+  sleep 5
+done
+
+if [ "${DOWNLOAD_OK}" != "true" ]; then
+  echo "ERROR: failed to download OpenAPI spec from ${SPEC_URL} after 3 attempts"
   rm -f /tmp/qa-reports/openapi.json
   exit 1
 fi
