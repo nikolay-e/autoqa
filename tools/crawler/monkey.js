@@ -194,6 +194,23 @@ async function login(page) {
         },
         { timeout: 30000 },
       );
+      // Confirm the session is usable on a fresh navigation — a
+      // SameSite=Strict / __Host- cookie can fail to attach after the submit,
+      // leaving the monkey clicking around an unauthenticated shell. Bounce
+      // back to /login means the session did not take; retry.
+      const probe =
+        SEED_PAGES.find(
+          (p) => p && p !== LOGIN_URL && !p.startsWith(`${LOGIN_URL}/`),
+        ) || "/";
+      await page.goto(`${BASE_URL}${probe}`, {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+      await page.waitForTimeout(1500);
+      const landed = new URL(page.url()).pathname;
+      if (landed === LOGIN_URL || landed.startsWith(`${LOGIN_URL}/`)) {
+        throw new Error(`session did not persist — bounced to ${landed}`);
+      }
       return true;
     } catch (err) {
       console.log(`Login attempt ${i + 1}/3 failed: ${err.message}`);

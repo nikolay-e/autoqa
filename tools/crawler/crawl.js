@@ -100,6 +100,25 @@ async function login(page, retries = 3) {
         { timeout: 30000 },
       );
       await page.waitForTimeout(1000);
+      // The submit navigated away from /login, but that alone does not prove
+      // the session is usable on a fresh request: a SameSite=Strict / __Host-
+      // cookie can fail to attach on the next clean navigation (observed as a
+      // login that "succeeds" then 401s every authed page). Re-navigate to an
+      // authed route from scratch and require that it does NOT bounce back to
+      // the login page; if it does, the session did not take — retry.
+      const probe =
+        SEED_PAGES.find(
+          (p) => p && p !== LOGIN_URL && !p.startsWith(`${LOGIN_URL}/`),
+        ) || "/";
+      await page.goto(`${BASE_URL}${probe}`, {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+      await page.waitForTimeout(Math.max(WAIT_MS, 1500));
+      const landed = new URL(page.url()).pathname;
+      if (landed === LOGIN_URL || landed.startsWith(`${LOGIN_URL}/`)) {
+        throw new Error(`session did not persist — bounced to ${landed}`);
+      }
       return;
     } catch (err) {
       console.log(`Login attempt ${i + 1}/${retries} failed: ${err.message}`);
