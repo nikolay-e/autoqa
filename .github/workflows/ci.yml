@@ -27,7 +27,12 @@ jobs:
       - run: node --check scripts/auth-playwright.mjs
       - run: node --check scripts/mechanical-checks.mjs
       - run: node --check scripts/aggregate-gate.mjs
+      - run: node --check lib/finding-schema.mjs
+      - run: node --check scripts/normalize-findings.mjs
+      - run: node --check scripts/generate-qa-report.mjs
+      - run: node --check scripts/selftest.mjs
       - run: bash -n scripts/auth.sh scripts/run-all.sh scripts/run-schemathesis.sh scripts/run-zap.sh scripts/run-observatory.sh
+      - run: node scripts/selftest.mjs
 
   self-test:
     runs-on: ubuntu-latest

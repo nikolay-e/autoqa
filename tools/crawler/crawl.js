@@ -268,6 +268,11 @@ async function crawlPage(page, path) {
           description: violation.description,
           nodes: violation.nodes.length,
           target,
+          helpUrl: violation.helpUrl || "",
+          failureSummary: (violation.nodes[0]?.failureSummary || "").slice(
+            0,
+            300,
+          ),
           fingerprint: fingerprint("axe", violation.id, path),
         });
       }
