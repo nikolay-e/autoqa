@@ -1,4 +1,5 @@
 node_modules/
 /tmp/
 ANALYSIS_*.md
+TODO.md
 tools/crawler/qa-axe.mjs

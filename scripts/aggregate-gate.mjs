@@ -36,6 +36,14 @@ const ENABLED = {
   monkey: flag("QA_GATE_MONKEY_ENABLED", "false"),
 };
 
+// When the only autoqa runs a consumer ever does are push-to-main post-deploy
+// (Argo Workflows, main-only GitHub jobs), the default "baseline updated on
+// main push — not blocking" downgrade makes the crawler gate permanently
+// vacuous: every regression is absorbed into the baseline in the same run and
+// only warns. Opting in makes a NEW finding fail exactly that one run — the
+// baseline still updates, so the next run is green (alarm-once semantics).
+const BASELINE_FAIL_ON_NEW = flag("QA_GATE_BASELINE_FAIL_ON_NEW", "false");
+
 const FAIL_ON = {
   crawler: flag("QA_GATE_CRAWLER_FAIL", "true"),
   schemathesis: flag("QA_GATE_SCHEMATHESIS_FAIL", "true"),
@@ -153,11 +161,14 @@ function gateCrawler() {
       const baselineUpdatedOnMainPush =
         diff.eventName === "push" && ["main", "master"].includes(diff.refName);
       const noBaselineYet = diff.baselinePresent === false;
-      const notBlocking = baselineUpdatedOnMainPush || noBaselineYet;
-      const reason = baselineUpdatedOnMainPush
-        ? " (baseline updated on main push — not blocking)"
-        : noBaselineYet
-          ? " (no baseline cached — first run, not blocking)"
+      const notBlocking =
+        (baselineUpdatedOnMainPush && !BASELINE_FAIL_ON_NEW) || noBaselineYet;
+      const reason = noBaselineYet
+        ? " (no baseline cached — first run, not blocking)"
+        : baselineUpdatedOnMainPush
+          ? notBlocking
+            ? " (baseline updated on main push — not blocking)"
+            : " (baseline updated — alarms once, absorbed next run)"
           : "";
       record(
         "crawler",
