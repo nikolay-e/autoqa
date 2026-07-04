@@ -36,8 +36,13 @@ autoqa/
 │   ├── crawl.js                     # Playwright + axe + CSP + screenshots
 │   ├── monkey.js                    # seeded chaos/monkey UI fuzzer (Playwright)
 │   └── package.json
+├── lib/
+│   └── finding-schema.mjs           # StandardFinding contract (dependency-free validate/normalize)
 ├── scripts/
 │   ├── run-all.sh                   # CI-agnostic orchestrator (image entrypoint)
+│   ├── normalize-findings.mjs       # every artifact -> validated findings.json (strict/lenient)
+│   ├── generate-qa-report.mjs       # findings.json -> COMPLETE qa-report.md + .json (always-on)
+│   ├── selftest.mjs                 # integration test: gate + normalizer + report end-to-end
 │   ├── auth.sh                      # Bearer token via /api auth
 │   ├── run-schemathesis.sh
 │   ├── run-zap.sh
@@ -80,6 +85,8 @@ All tools write to `/tmp/qa-reports/`:
 - `mechanical-findings.json`, `crawler-pages.json`
 - `screenshots/*.png` for Argos
 - `schemathesis.txt`, `zap.txt`, `zap-report.json`, `openapi.json`
+- `findings.json` — normalized `StandardFinding[]` across all tools (the backbone)
+- `qa-report.md`, `qa-report.json` — always-on COMPLETE human+machine report
 
 ## Usage
 

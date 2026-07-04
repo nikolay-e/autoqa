@@ -40,6 +40,7 @@ export QA_NO_SANDBOX
 : "${QA_CRAWLER_MAX_PAGES:=50}"
 : "${QA_CRAWLER_WAIT_MS:=2000}"
 : "${QA_CRAWLER_FAIL_ON_VIOLATIONS:=true}"
+: "${QA_BASELINE_FAIL_ON_NEW:=false}"
 : "${QA_MECHANICAL_FAIL_ON_VIOLATIONS:=false}"
 : "${QA_SCHEMATHESIS_FAIL_ON_VIOLATIONS:=true}"
 : "${QA_SCHEMATHESIS_EXCLUDE_CHECKS:=ignored_auth,unsupported_method}"
@@ -52,6 +53,7 @@ export QA_NO_SANDBOX
 : "${QA_MONKEY_SEED_PAGES:=/}"
 : "${QA_MONKEY_AVOID_TEXT:=logout,log out,sign out,signout,delete account,deactivate,remove account}"
 : "${QA_MONKEY_FAIL_ON_VIOLATIONS:=false}"
+: "${QA_MONKEY_CONSOLE_IGNORE:=${QA_CRAWLER_CONSOLE_IGNORE:-}}"
 
 REPORTS="${QA_OUTPUT_DIR}"
 mkdir -p "${REPORTS}/baseline" "${REPORTS}/screenshots"
@@ -173,11 +175,16 @@ if [ "${QA_MONKEY_ENABLED}" = "true" ]; then
   export MONKEY_SEED="${QA_MONKEY_SEED}"
   export MONKEY_AVOID_TEXT="${QA_MONKEY_AVOID_TEXT}"
   export MONKEY_EXCLUDE_URLS="${QA_MONKEY_EXCLUDE_URLS:-}"
+  export MONKEY_CONSOLE_IGNORE="${QA_MONKEY_CONSOLE_IGNORE}"
   export MONKEY_FAIL_ON_VIOLATIONS="${QA_MONKEY_FAIL_ON_VIOLATIONS}"
   export MONKEY_FINDINGS_PATH="${REPORTS}/monkey-findings.json"
   export MONKEY_NO_SANDBOX="${QA_NO_SANDBOX}"
   run_tool "monkey" node "${AUTOQA_HOME}/tools/crawler/monkey.js"
 fi
+
+# --- normalize + COMPLETE report (always-on, advisory — never gates) ----------
+run_tool "normalize-findings" node "${AUTOQA_HOME}/scripts/normalize-findings.mjs"
+run_tool "qa-report" node "${AUTOQA_HOME}/scripts/generate-qa-report.mjs"
 
 # --- final gate (the only step whose exit code propagates) --------------------
 echo ""
@@ -195,6 +202,7 @@ if [ "${QA_BASELINE_ENABLED}" = "true" ]; then
 else
   export QA_GATE_CRAWLER_FAIL="${QA_CRAWLER_FAIL_ON_VIOLATIONS}"
 fi
+export QA_GATE_BASELINE_FAIL_ON_NEW="${QA_BASELINE_FAIL_ON_NEW}"
 export QA_GATE_CRAWLER_DECORATIVE_PATHS="${QA_CRAWLER_DECORATIVE_PATHS:-}"
 export QA_GATE_SCHEMATHESIS_FAIL="${QA_SCHEMATHESIS_FAIL_ON_VIOLATIONS}"
 export QA_GATE_ZAP_FAIL="${QA_ZAP_FAIL_ON_VIOLATIONS}"
