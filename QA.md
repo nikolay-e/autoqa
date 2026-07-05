@@ -242,6 +242,43 @@ re-`fetch`/`git log` before assuming the local HEAD snapshot is still current,
 especially mid-sweep when consumer logs are being read concurrently with fixes
 landing.
 
+**2026-07-05 recurrence:** mid-sweep, `yay-tsa`'s autoqa pin had already moved from
+`426f577` to `9e4a383` by a concurrent session before this one got to the bump step —
+and `yay-tsa`'s working tree had unrelated uncommitted feature work (`DownloadButton.tsx`,
+`offline.store.ts`, `GlobalSearchBar.tsx`, `client-telemetry.ts`). Staged and committed
+ONLY the pin-bump file (`git add .github/workflows/ci.yml`, never `-A`) to avoid
+committing someone else's in-progress work; those files were still unstaged after push.
+Same pattern hit `gitops` — `git push` was rejected (remote had 14 new Image-Updater
+`build: automatic update of ...` commits); `git fetch` + `git rebase origin/main` (no
+conflicts, disjoint files) resolved it cleanly. **Rule of thumb:** on a multi-repo bump
+step, always `git fetch`/`git status` immediately before touching a shared repo, stage
+by explicit filename, and rebase-not-merge on a push rejection when the remote-only
+commits are known-disjoint (bot/automation commits) from your change.
+
+## gateZap: distinguish "ZAP skipped" from "ZAP crashed" (closes #23)
+
+`aggregate-gate.mjs`'s `gateZap` treated a missing `zap-report.json` as one message
+regardless of cause. `run-zap.sh` itself no-ops (exit 0, no report) when
+`openapi.json` is absent — which happens when schemathesis's spec download failed,
+or `schemathesis-enabled=false` while `zap-enabled=true`. That is a real, worth-
+surfacing problem, but conflating it with "ZAP started and crashed" made the gate
+summary alone insufficient to diagnose which one happened. Fix: `gateZap` now checks
+whether `openapi.json` exists before reporting the generic crash message; if it
+doesn't, the message names the precondition instead. Covered by a new `selftest.mjs`
+Phase 2 (both branches). Ref: `run-schemathesis.sh`'s retry fix (`1b23874`) already
+closed the transient-network half of the original report; this closes the remaining
+gate-clarity half.
+
+## `.playwright-mcp/` browser-session debris in repo root
+
+A Playwright MCP browser session (opened directly against this repo's working
+directory, not the tool's usual `~/.playwright-mcp` home-dir jail) left untracked
+`page-*.yml` / `console-*.log` scratch files in the repo root. These are not
+gitignored by default and broke `npx prettier --check "**/*.{js,mjs,json,yml,yaml,md}"`
+locally (though never committed, so CI was unaffected). Added `.playwright-mcp/` to
+`.gitignore` and deleted the stray directory. If a local prettier run reports
+failures only under `.playwright-mcp/`, this is why — not a real formatting bug.
+
 ---
 
 Generic QA patterns live in the `/qa` skill — do not duplicate here.
