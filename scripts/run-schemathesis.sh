@@ -58,6 +58,14 @@ if [ -n "${TOKEN}" ]; then
   ST_ARGS+=(-H "Authorization: Bearer ${TOKEN}")
 fi
 
+# Origin isn't a schema-declared header, so Schemathesis never sends one — any
+# app that CSRF/Origin-gates mutating requests before checking auth then 403s
+# on every POST/PUT/DELETE the fuzzer sends, masking the real auth/validation
+# behavior behind a same-origin check a real browser client always satisfies.
+# Send a realistic Origin so negative-auth checks (e.g. missing_required_header)
+# exercise actual auth logic instead of universally tripping the CSRF gate.
+ST_ARGS+=(-H "Origin: ${ST_BASE_URL}")
+
 if [ -n "${EXCLUDE_CHECKS}" ]; then
   ST_ARGS+=(--exclude-checks "${EXCLUDE_CHECKS}")
 fi
