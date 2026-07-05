@@ -326,6 +326,33 @@ console.log("Phase 1 — report generator emits the COMPLETE deliverable");
   );
 }
 
+// ---------------------------------------------------------------------------
+console.log("Phase 2 — gate distinguishes ZAP skipped vs ZAP crashed (#23)");
+{
+  const skippedDir = freshReports();
+  const skippedRun = runNode("aggregate-gate.mjs", {
+    QA_REPORTS_DIR: skippedDir,
+    QA_GATE_CRAWLER_ENABLED: "false",
+    QA_GATE_ZAP_ENABLED: "true",
+  });
+  ok(
+    /openapi\.json is unavailable/.test(skippedRun.out),
+    "no openapi.json -> gate names the precondition, not a ZAP crash",
+  );
+
+  const crashedDir = freshReports();
+  writeFileSync(join(crashedDir, "openapi.json"), JSON.stringify({}));
+  const crashedRun = runNode("aggregate-gate.mjs", {
+    QA_REPORTS_DIR: crashedDir,
+    QA_GATE_CRAWLER_ENABLED: "false",
+    QA_GATE_ZAP_ENABLED: "true",
+  });
+  ok(
+    /ZAP step failed to produce report/.test(crashedRun.out),
+    "openapi.json present but zap-report.json missing -> real ZAP-crash message",
+  );
+}
+
 console.log("");
 if (failures > 0) {
   console.error(`SELFTEST FAILED: ${failures} assertion(s)`);

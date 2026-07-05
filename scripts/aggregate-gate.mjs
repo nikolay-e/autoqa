@@ -341,6 +341,20 @@ function gateZap() {
   if (!ENABLED.zap) return;
   const reportPath = `${REPORTS}/zap-report.json`;
   if (!existsSync(reportPath)) {
+    // run-zap.sh no-ops (exit 0, no zap-report.json) when openapi.json is
+    // absent — that happens when schemathesis's spec download failed (or
+    // schemathesis-enabled=false). That is a real problem worth surfacing,
+    // but it is NOT "ZAP crashed after starting"; conflating the two makes
+    // the failure mode harder to diagnose from the gate summary alone.
+    // Ref: issue #23.
+    if (!existsSync(`${REPORTS}/openapi.json`)) {
+      record(
+        "zap",
+        "fail",
+        "zap-report.json missing — ZAP was skipped because openapi.json is unavailable (likely a schemathesis spec-download failure, or schemathesis-enabled=false); check the schemathesis step",
+      );
+      return;
+    }
     record(
       "zap",
       "fail",

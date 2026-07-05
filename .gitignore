@@ -3,3 +3,4 @@ node_modules/
 ANALYSIS_*.md
 TODO.md
 tools/crawler/qa-axe.mjs
+.playwright-mcp/
