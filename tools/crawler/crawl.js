@@ -2,6 +2,7 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { chromium } from "playwright";
 import AxeBuilder from "@axe-core/playwright";
+import { redactUrlSecrets } from "./redact.js";
 
 const BASE_URL = process.env.CRAWL_URL || "";
 const USERNAME = process.env.CRAWL_USERNAME || "";
@@ -224,7 +225,7 @@ async function crawlPage(page, path) {
     ) {
       mixed.push({
         path,
-        url,
+        url: redactUrlSecrets(url),
         fingerprint: fingerprint("mixed-content", new URL(url).pathname, path),
       });
     }
@@ -239,7 +240,7 @@ async function crawlPage(page, path) {
     if (status >= 400 && !isMainNavigation && !isExcluded(url)) {
       networkFailures.push({
         path,
-        url,
+        url: redactUrlSecrets(url),
         status,
         fingerprint: fingerprint(
           "network",

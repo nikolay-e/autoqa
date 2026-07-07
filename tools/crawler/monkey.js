@@ -1,6 +1,7 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { chromium } from "playwright";
+import { redactUrlSecrets } from "./redact.js";
 
 const BASE_URL = process.env.MONKEY_URL || "";
 const USERNAME = process.env.MONKEY_USERNAME || "";
@@ -146,14 +147,14 @@ function attachListeners(page) {
       record(
         "request-failed",
         page.url(),
-        `${url} ${req.failure()?.errorText || ""}`,
+        `${redactUrlSecrets(url)} ${req.failure()?.errorText || ""}`,
       );
   });
   page.on("response", (res) => {
     const status = res.status();
     const url = res.url();
     if (status >= 500 && !isExcluded(url))
-      record("http-5xx", page.url(), `${status} ${url}`);
+      record("http-5xx", page.url(), `${status} ${redactUrlSecrets(url)}`);
   });
   page.on("dialog", (d) => d.dismiss().catch(() => {}));
   page.on("framenavigated", (frame) => {

@@ -22,6 +22,7 @@ jobs:
       - run: npx prettier --check "**/*.{js,mjs,json,yml,yaml,md}"
       - run: node --check tools/crawler/crawl.js
       - run: node --check tools/crawler/monkey.js
+      - run: node --check tools/crawler/redact.js
       - run: node --check scripts/baseline-diff.mjs
       - run: node --check scripts/run-authz-matrix.mjs
       - run: node --check scripts/auth-playwright.mjs
