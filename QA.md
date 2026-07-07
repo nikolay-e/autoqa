@@ -269,6 +269,41 @@ Phase 2 (both branches). Ref: `run-schemathesis.sh`'s retry fix (`1b23874`) alre
 closed the transient-network half of the original report; this closes the remaining
 gate-clarity half.
 
+## Argo consumers pin the IMAGE in gitops — bump it alongside the yay-tsa action pin
+
+The 8 Argo consumers run `ghcr.io/nikolay-e/autoqa:main-<40hex>` pinned in
+`gitops/kubernetes/ci/ci-platform/workflow-templates/autoqa.yaml` (ONE pin for all of
+them), not a `.github/workflows` SHA. After fixing autoqa, the consumer-side bump is
+therefore TWO edits: the yay-tsa workflow pin (`nikolay-e/autoqa@<sha>`) AND the gitops
+WorkflowTemplate image tag. 2026-07-07: the template still pinned `main-c1cece6…` (the
+broken-Origin commit) two days after the fix shipped — the image pin is the easier one
+to forget. Verify the tag exists first: `docker manifest inspect ghcr.io/nikolay-e/autoqa:main-<sha>`.
+
+## MinIO sweep: per-app prefix listing beats full-bucket find
+
+`mc find` on the whole artifacts bucket is slow (2min+) and returns no timestamps.
+Faster per-consumer latest-log lookup: `mc ls -r "argologs/argo-workflows-artifacts/<app>-autoqa" | grep main.log | sort | tail -1`
+(prefix-scoped recursion, real mtimes, lexicographic date sort works). Note
+`toy-projects` never produces `toy-projects-autoqa-*` workflows — its sensor submits
+per-sub-app `papagai-autoqa-*` and `touch-typing-autoqa-*`; sweep those prefixes.
+
+## Reported URLs are redacted at capture time (api_key leak class)
+
+yay-tsa's public post-deploy-qa log printed the QA session's `?api_key=<hex>` verbatim
+in the monkey report table. `tools/crawler/redact.js` now masks known secret query
+params (api_key/token/password/…) in crawler network/mixed findings and monkey
+request-failed / http-5xx messages before they are stored. Fingerprints hash the
+pathname only, so baselines are unaffected. When sweeping consumer logs, a raw
+`api_key=`/`token=` hex value in an autoqa report is a regression of this fix.
+
+## Local test servers + spawnSync do not mix (selftest-http-basic)
+
+`selftest-http-basic.mjs` starts its Basic-auth HTTP server on the SAME process that
+drives the crawler. `spawnSync` blocks the parent event loop, so the server stops
+accepting connections and every `page.goto` times out at 60s — the failure looks like
+a crawler bug but is a frozen test harness. Any future selftest that pairs an in-process
+server with a child process must use async `spawn` + await close.
+
 ## `.playwright-mcp/` browser-session debris in repo root
 
 A Playwright MCP browser session (opened directly against this repo's working
