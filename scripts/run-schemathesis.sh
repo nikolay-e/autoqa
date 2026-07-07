@@ -64,7 +64,11 @@ fi
 # behavior behind a same-origin check a real browser client always satisfies.
 # Send a realistic Origin so negative-auth checks (e.g. missing_required_header)
 # exercise actual auth logic instead of universally tripping the CSRF gate.
-ST_ARGS+=(-H "Origin: ${ST_BASE_URL}")
+# An Origin is scheme://host[:port] ONLY — a base URL with a path (e.g.
+# https://host/api) is invalid and origin-locked CORS configs reject every
+# request with 403 "Invalid CORS request", turning the whole run into noise.
+ST_ORIGIN=$(echo "${ST_BASE_URL}" | grep -oE '^https?://[^/]+')
+ST_ARGS+=(-H "Origin: ${ST_ORIGIN}")
 
 if [ -n "${EXCLUDE_CHECKS}" ]; then
   ST_ARGS+=(--exclude-checks "${EXCLUDE_CHECKS}")
