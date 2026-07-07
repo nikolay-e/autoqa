@@ -6,6 +6,8 @@ import AxeBuilder from "@axe-core/playwright";
 const BASE_URL = process.env.CRAWL_URL || "";
 const USERNAME = process.env.CRAWL_USERNAME || "";
 const PASSWORD = process.env.CRAWL_PASSWORD || "";
+const HTTP_BASIC_USERNAME = process.env.CRAWL_HTTP_BASIC_USERNAME || "";
+const HTTP_BASIC_PASSWORD = process.env.CRAWL_HTTP_BASIC_PASSWORD || "";
 const LOGIN_URL = process.env.CRAWL_LOGIN_URL || "/login";
 const LOGIN_SELECTOR_USERNAME =
   process.env.CRAWL_LOGIN_SELECTOR_USERNAME ||
@@ -531,6 +533,14 @@ async function main() {
     ignoreHTTPSErrors: true,
     userAgent:
       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+    ...(HTTP_BASIC_USERNAME && HTTP_BASIC_PASSWORD
+      ? {
+          httpCredentials: {
+            username: HTTP_BASIC_USERNAME,
+            password: HTTP_BASIC_PASSWORD,
+          },
+        }
+      : {}),
   });
   const page = await context.newPage();
 

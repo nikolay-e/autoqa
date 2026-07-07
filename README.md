@@ -117,6 +117,22 @@ advisory by default; `console.error` and failed requests are always non-blocking
 and only crashes / uncaught errors / 5xx block the gate (and only when
 `monkey-fail-on-violations: "true"`).
 
+### Site behind proxy-level HTTP Basic Auth (Traefik basicAuth etc.)
+
+```yaml
+- uses: nikolay-e/autoqa@main
+  with:
+    url: https://staging.your-app.com
+    http-basic-username: qa
+    http-basic-password: ${{ secrets.QA_BASIC_PASSWORD }}
+```
+
+Credentials feed Playwright's `httpCredentials` in the crawler and monkey, and an
+`Authorization: Basic` header in Schemathesis (a Bearer token from `auth-url` wins
+when both are set — there is only one `Authorization` header). Observatory and ZAP
+are not covered: Observatory scans from Mozilla's servers and cannot carry
+credentials, so run it against a public host instead.
+
 ### Visual regression with Argos
 
 ```yaml

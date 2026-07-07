@@ -14,6 +14,8 @@ else
   SPEC_URL="${QA_BASE_URL%/}${QA_OPENAPI_URL}"
 fi
 TOKEN="${QA_AUTH_TOKEN:-}"
+BASIC_USERNAME="${QA_HTTP_BASIC_USERNAME:-}"
+BASIC_PASSWORD="${QA_HTTP_BASIC_PASSWORD:-}"
 EXCLUDE_PATHS="${QA_SCHEMATHESIS_EXCLUDE_PATHS:-}"
 EXCLUDE_CHECKS="${QA_SCHEMATHESIS_EXCLUDE_CHECKS:-ignored_auth,unsupported_method}"
 
@@ -25,6 +27,8 @@ CURL_ARGS=(
 )
 if [ -n "${TOKEN}" ]; then
   CURL_ARGS+=(-H "Authorization: Bearer ${TOKEN}")
+elif [ -n "${BASIC_USERNAME}" ] && [ -n "${BASIC_PASSWORD}" ]; then
+  CURL_ARGS+=(-u "${BASIC_USERNAME}:${BASIC_PASSWORD}")
 fi
 
 # A single transient network blip (edge hiccup, momentary connection reset) shouldn't fail the
@@ -54,8 +58,13 @@ ST_ARGS=(
   --checks all
 )
 
+# Both auth styles ride the one Authorization header, so they are mutually
+# exclusive — a Bearer token (app-level auth) wins over proxy-level Basic.
 if [ -n "${TOKEN}" ]; then
   ST_ARGS+=(-H "Authorization: Bearer ${TOKEN}")
+elif [ -n "${BASIC_USERNAME}" ] && [ -n "${BASIC_PASSWORD}" ]; then
+  BASIC_B64=$(printf '%s:%s' "${BASIC_USERNAME}" "${BASIC_PASSWORD}" | base64 | tr -d '\n')
+  ST_ARGS+=(-H "Authorization: Basic ${BASIC_B64}")
 fi
 
 # Origin isn't a schema-declared header, so Schemathesis never sends one — any

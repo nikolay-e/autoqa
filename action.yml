@@ -20,6 +20,12 @@ inputs:
   auth-login-page:
     description: "Login page path used when auth-mode=playwright (e.g., /login). Falls back to crawler-login-url if empty."
     default: ""
+  http-basic-username:
+    description: "Username for proxy-level HTTP Basic Auth (e.g., Traefik basicAuth middleware in front of the whole site). Applies to crawler + monkey (Playwright httpCredentials) and Schemathesis (Authorization: Basic; a Bearer token from auth-url wins when both are set — one Authorization header). Not supported for Observatory (scans from Mozilla's servers) or ZAP. Empty = off. Ref: issue #26."
+    default: ""
+  http-basic-password:
+    description: "Password for proxy-level HTTP Basic Auth (set as a secret in the downstream workflow)."
+    default: ""
 
   crawler-enabled:
     description: "Run Playwright crawler"
@@ -278,6 +284,8 @@ runs:
         QA_OPENAPI_URL: ${{ inputs.openapi-url }}
         QA_SCHEMATHESIS_EXCLUDE_PATHS: ${{ inputs.schemathesis-exclude-paths }}
         QA_SCHEMATHESIS_EXCLUDE_CHECKS: ${{ inputs.schemathesis-exclude-checks }}
+        QA_HTTP_BASIC_USERNAME: ${{ inputs.http-basic-username }}
+        QA_HTTP_BASIC_PASSWORD: ${{ inputs.http-basic-password }}
 
     - name: ZAP security scan
       if: always() && inputs.zap-enabled == 'true'
@@ -320,6 +328,8 @@ runs:
         CRAWL_URL: ${{ inputs.url }}
         CRAWL_USERNAME: ${{ inputs.crawler-username }}
         CRAWL_PASSWORD: ${{ inputs.crawler-password }}
+        CRAWL_HTTP_BASIC_USERNAME: ${{ inputs.http-basic-username }}
+        CRAWL_HTTP_BASIC_PASSWORD: ${{ inputs.http-basic-password }}
         CRAWL_LOGIN_URL: ${{ inputs.crawler-login-url }}
         CRAWL_LOGIN_SELECTOR_USERNAME: ${{ inputs.crawler-login-selector-username }}
         CRAWL_LOGIN_SELECTOR_PASSWORD: ${{ inputs.crawler-login-selector-password }}
@@ -395,6 +405,8 @@ runs:
         MONKEY_URL: ${{ inputs.url }}
         MONKEY_USERNAME: ${{ inputs.crawler-username }}
         MONKEY_PASSWORD: ${{ inputs.crawler-password }}
+        MONKEY_HTTP_BASIC_USERNAME: ${{ inputs.http-basic-username }}
+        MONKEY_HTTP_BASIC_PASSWORD: ${{ inputs.http-basic-password }}
         MONKEY_LOGIN_URL: ${{ inputs.crawler-login-url }}
         MONKEY_LOGIN_SELECTOR_USERNAME: ${{ inputs.crawler-login-selector-username }}
         MONKEY_LOGIN_SELECTOR_PASSWORD: ${{ inputs.crawler-login-selector-password }}

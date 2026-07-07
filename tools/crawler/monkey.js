@@ -5,6 +5,8 @@ import { chromium } from "playwright";
 const BASE_URL = process.env.MONKEY_URL || "";
 const USERNAME = process.env.MONKEY_USERNAME || "";
 const PASSWORD = process.env.MONKEY_PASSWORD || "";
+const HTTP_BASIC_USERNAME = process.env.MONKEY_HTTP_BASIC_USERNAME || "";
+const HTTP_BASIC_PASSWORD = process.env.MONKEY_HTTP_BASIC_PASSWORD || "";
 const LOGIN_URL = process.env.MONKEY_LOGIN_URL || "/login";
 const LOGIN_SELECTOR_USERNAME =
   process.env.MONKEY_LOGIN_SELECTOR_USERNAME ||
@@ -418,6 +420,14 @@ async function main() {
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
     ignoreHTTPSErrors: true,
+    ...(HTTP_BASIC_USERNAME && HTTP_BASIC_PASSWORD
+      ? {
+          httpCredentials: {
+            username: HTTP_BASIC_USERNAME,
+            password: HTTP_BASIC_PASSWORD,
+          },
+        }
+      : {}),
   });
   const page = await context.newPage();
   attachContextListeners(context);
