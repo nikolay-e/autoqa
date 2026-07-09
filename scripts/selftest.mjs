@@ -353,6 +353,32 @@ console.log("Phase 2 — gate distinguishes ZAP skipped vs ZAP crashed (#23)");
   );
 }
 
+console.log("Phase 2 — schemathesis gate counts failures across ALL phases");
+{
+  const phasedDir = freshReports();
+  writeFileSync(
+    join(phasedDir, "schemathesis.txt"),
+    " ⏭   Examples\n     ✅ 12 passed  ❌ 0 failed\n" +
+      " ❌  Coverage\n     ✅ 52 passed  ❌ 23 failed\n" +
+      " ❌  Fuzzing\n     ✅ 48 passed  ❌ 27 failed\n" +
+      " ❌  Stateful\n     ✅ 268 passed  ❌ 9 failed\n",
+  );
+  const phasedRun = runNode("aggregate-gate.mjs", {
+    QA_REPORTS_DIR: phasedDir,
+    QA_GATE_CRAWLER_ENABLED: "false",
+    QA_GATE_SCHEMATHESIS_ENABLED: "true",
+    QA_GATE_SCHEMATHESIS_FAIL: "true",
+  });
+  ok(
+    phasedRun.code === 1,
+    "leading '0 failed' phase does not mask later failing phases",
+  );
+  ok(
+    /reported 27 failure/.test(phasedRun.out),
+    "gate reports the worst phase count (27), not the first match",
+  );
+}
+
 console.log("");
 if (failures > 0) {
   console.error(`SELFTEST FAILED: ${failures} assertion(s)`);

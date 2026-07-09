@@ -228,6 +228,19 @@ function gateCrawler() {
 // `reconciled` is true only when the parsed block count matches the report's
 // own "N failed" total; when it does not, the caller falls back to failing on
 // the raw total so a parser drift can never silently suppress real failures.
+// Schemathesis 4 prints one "N passed  M failed" line PER PHASE (Examples,
+// Coverage, Fuzzing, Stateful). A single .match() takes whichever line comes
+// first — under-reporting when a later phase failed more, and going blind
+// entirely if an early clean phase prints "0 failed" before a failing one.
+// The max across all phase lines is the conservative per-phase worst case.
+function maxFailedCount(out) {
+  let max = 0;
+  for (const m of out.matchAll(/(\d+)\s+failed/gi)) {
+    max = Math.max(max, Number(m[1]));
+  }
+  return max;
+}
+
 function classifySchemathesis(out) {
   const failIdx = out.search(/={6,}\s*FAILURES\s*={6,}/);
   const summaryIdx = out.search(/={6,}\s*SUMMARY\s*={6,}/);
@@ -261,8 +274,7 @@ function classifySchemathesis(out) {
     else blocking++;
   }
   const parsedTotal = preServlet + blocking;
-  const totalMatch = out.match(/(\d+)\s+failed/i);
-  const reportedTotal = totalMatch ? Number(totalMatch[1]) : -1;
+  const reportedTotal = maxFailedCount(out) || -1;
   return {
     preServlet,
     blocking,
@@ -283,9 +295,8 @@ function gateSchemathesis() {
   }
   const out = readFileSync(txt, "utf8");
 
-  const summaryMatch = out.match(/(\d+)\s+failed/i);
-  if (summaryMatch && Number(summaryMatch[1]) > 0) {
-    const total = Number(summaryMatch[1]);
+  const total = maxFailedCount(out);
+  if (total > 0) {
     // An API that documents JSON/problem+json error bodies cannot itself
     // emit a text/html 4xx from a controller — every reachable error path
     // renders structured JSON. So a failure whose ONLY issue is an

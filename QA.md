@@ -26,7 +26,7 @@ Project-specific QA methodology learnings for this repo. Generic patterns live i
 
 The autoqa self-test on `example.com` exercises a narrow happy path (no auth, no OpenAPI, no ZAP, no AuthZ matrix, single seed page) plus a short **monkey** run (`monkey-enabled`, 15s, seed 1337) and an **image build/publish** job. Real defects in autoqa surface against the CONSUMER apps — Cloudflare interactions, login redirects, OpenAPI variants, ZAP container quirks, schemathesis edge cases, etc. A green self-test does NOT mean autoqa is healthy.
 
-> **Two consumer surfaces (post-migration).** Only **`yay-tsa`** still consumes autoqa as a **GitHub Action** (`uses: nikolay-e/autoqa@<sha>`) — the `gh`-based sweep below finds it. The **Argo Workflows** consumers run the **portable image** via gitops (a per-app `submit-autoqa` sensor trigger → the `autoqa` WorkflowTemplate, `ci/ci-platform/` in the gitops repo), NOT a `.github/workflows` pin. As of 2026-06-21 there are **8** of them — enumerate authoritatively from the sensors, never from memory (the set keeps growing): `grep -rl submit-autoqa ~/gitops/kubernetes/ci/ci-platform/sensor-*-image.yaml`. Current set: `andrii-bardakov-com`, `life-as-code`, `lingua-quiz`, `nikolay-eremeev-com`, `pflegescore`, `tanyalytvyn-com`, `toy-projects`, `wealth-as-code`. For those, the run log is the Argo Workflow pod (`kubectl -n argo-workflows logs <app>-autoqa-<id>`), and "is it wired" is the gitops sensor/WorkflowTemplate, not a workflow-file grep.
+> **Two consumer surfaces (post-migration).** Only **`yay-tsa`** still consumes autoqa as a **GitHub Action** (`uses: nikolay-e/autoqa@<sha>`) — the `gh`-based sweep below finds it. The **Argo Workflows** consumers run the **portable image** via gitops (a per-app `submit-autoqa` sensor trigger → the `autoqa` WorkflowTemplate, `ci/ci-platform/` in the gitops repo), NOT a `.github/workflows` pin. As of 2026-07-09 there are **9** of them — enumerate authoritatively from the sensors, never from memory (the set keeps growing): `grep -rl submit-autoqa ~/gitops/kubernetes/ci/ci-platform/sensor-*-image.yaml`. Current set: `andrii-bardakov-com`, `hidden-gem`, `life-as-code`, `lingua-quiz`, `nikolay-eremeev-com`, `pflegescore`, `tanyalytvyn-com`, `toy-projects`, `wealth-as-code`. For those, the run log is the Argo Workflow pod (`kubectl -n argo-workflows logs <app>-autoqa-<id>`), and "is it wired" is the gitops sensor/WorkflowTemplate, not a workflow-file grep.
 
 **Every `/qa` pass on this repo MUST:**
 
@@ -96,7 +96,7 @@ The autoqa self-test on `example.com` exercises a narrow happy path (no auth, no
 
 - Every tool step in `action.yml` carries `continue-on-error: true` so one tool's crash never silently skips the rest. The cost: each tool's exit code is also swallowed, so a green CI used to ship 200 broken links, ZAP HIGH alerts, or schemathesis 5xx failures (issue #3).
 - The fix is **not** to drop `continue-on-error` — that would prevent ZAP from running after a flaky schemathesis call. Instead, `scripts/aggregate-gate.mjs` re-derives pass/fail from the report files in `/tmp/qa-reports/` after all tools have run, and exits 1 when any enabled tool's `*-fail-on-violations` input is true and its report shows blocking content.
-- Gates per tool: `crawler` (baseline-diff fresh count on PR; on push-to-main fresh findings only warn unless `baseline-fail-on-new=true` makes them fail that one run — alarm-once, the baseline update in the same run keeps the next run green; or any finding when baseline-enabled=false), `schemathesis` (schemathesis.txt grep `\d+ failed`), `zap` (`zap-report.json` alerts with `riskcode=3`), `mechanical` (P0 findings; default off — advisory), `observatory` (grade vs `observatory-fail-grade`), `authz` (`authz-matrix.json findings[].issues.length > 0`).
+- Gates per tool: `crawler` (baseline-diff fresh count on PR; on push-to-main fresh findings only warn unless `baseline-fail-on-new=true` makes them fail that one run — alarm-once, the baseline update in the same run keeps the next run green; or any finding when baseline-enabled=false), `schemathesis` (schemathesis.txt `\d+ failed` — the MAX across all phase-summary lines; Schemathesis 4 prints one per phase (Examples/Coverage/Fuzzing/Stateful), so the first match under-counts and a leading `0 failed` phase would mask later failures entirely), `zap` (`zap-report.json` alerts with `riskcode=3`), `mechanical` (P0 findings; default off — advisory), `observatory` (grade vs `observatory-fail-grade`), `authz` (`authz-matrix.json findings[].issues.length > 0`).
 - The gate is the LAST step in the composite, after artifact upload, so reports always upload even when the gate fails.
 
 ## StandardFinding backbone + COMPLETE report
@@ -283,7 +283,9 @@ to forget. Verify the tag exists first: `docker manifest inspect ghcr.io/nikolay
 
 `mc find` on the whole artifacts bucket is slow (2min+) and returns no timestamps.
 Faster per-consumer latest-log lookup: `mc ls -r "argologs/argo-workflows-artifacts/<app>-autoqa" | grep main.log | sort | tail -1`
-(prefix-scoped recursion, real mtimes, lexicographic date sort works). Note
+(prefix-scoped recursion, real mtimes, lexicographic date sort works). The `argologs`
+mc alias points at `localhost:19000` — start `kubectl -n minio port-forward svc/minio 19000:9000`
+first, or every `mc` call fails with exit 1. Note
 `toy-projects` never produces `toy-projects-autoqa-*` workflows — its sensor submits
 per-sub-app `papagai-autoqa-*` and `touch-typing-autoqa-*`; sweep those prefixes.
 
