@@ -41,6 +41,22 @@ const ARGOS_ENABLED = process.env.CRAWL_ARGOS_ENABLED === "true";
 
 const CSP_VIOLATION_PATTERN = /Content Security Policy/i;
 
+const BASE_ORIGIN = (() => {
+  try {
+    return new URL(BASE_URL).origin;
+  } catch {
+    return "";
+  }
+})();
+
+function landedOffOrigin(page) {
+  try {
+    return BASE_ORIGIN !== "" && new URL(page.url()).origin !== BASE_ORIGIN;
+  } catch {
+    return false;
+  }
+}
+
 const visited = new Set();
 const queue = [];
 const results = {
@@ -267,6 +283,18 @@ async function crawlPage(page, path) {
       });
     }
 
+    // A navigation whose FINAL url is off-origin (OAuth provider, SSO, payment
+    // gateway) is out of QA scope — auditing the third party's page reports
+    // their console errors / axe violations / 403 assets as app findings.
+    // Stop here: no audits, no link extraction, and the listener buffers
+    // collected during the redirect are discarded. Ref: issue #27.
+    if (landedOffOrigin(page)) {
+      console.log(
+        `  SKIP ${path} | redirected off-origin to ${new URL(page.url()).origin} — external page not audited`,
+      );
+      return;
+    }
+
     await page.waitForTimeout(WAIT_MS);
 
     results.pagesVisited++;
@@ -396,12 +424,12 @@ async function crawlPage(page, path) {
       fingerprint: fingerprint("broken", "timeout", path),
     });
     console.log(`  ERR ${path} | ${err.message}`);
+  } finally {
+    page.removeAllListeners("pageerror");
+    page.removeAllListeners("console");
+    page.removeAllListeners("request");
+    page.removeAllListeners("response");
   }
-
-  page.removeAllListeners("pageerror");
-  page.removeAllListeners("console");
-  page.removeAllListeners("request");
-  page.removeAllListeners("response");
 }
 
 function printJsErrors() {

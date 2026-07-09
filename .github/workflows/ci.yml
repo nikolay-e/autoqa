@@ -33,6 +33,7 @@ jobs:
       - run: node --check scripts/generate-qa-report.mjs
       - run: node --check scripts/selftest.mjs
       - run: node --check scripts/selftest-http-basic.mjs
+      - run: node --check scripts/selftest-off-origin.mjs
       - run: bash -n scripts/auth.sh scripts/run-all.sh scripts/run-schemathesis.sh scripts/run-zap.sh scripts/run-observatory.sh
       - run: node scripts/selftest.mjs
 
@@ -55,6 +56,8 @@ jobs:
           monkey-seed: "1337"
       - name: Self-test HTTP Basic Auth (crawler httpCredentials)
         run: node scripts/selftest-http-basic.mjs
+      - name: Self-test crawler origin boundary (issue 27)
+        run: node scripts/selftest-off-origin.mjs
 
   image:
     runs-on: ubuntu-latest

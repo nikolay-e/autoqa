@@ -298,13 +298,11 @@ function gateSchemathesis() {
     // (e.g. a half-written binary stream) stays blocking. Ref: issue #8/#11.
     const { preServlet, blocking, reconciled } = classifySchemathesis(out);
     if (reconciled && preServlet > 0) {
-      if (preServlet > 0) {
-        record(
-          "schemathesis",
-          "info",
-          `${preServlet} pre-servlet container rejection(s) (text/html 4xx on malformed input — not app-fixable)`,
-        );
-      }
+      record(
+        "schemathesis",
+        "info",
+        `${preServlet} pre-servlet container rejection(s) (text/html 4xx on malformed input — not app-fixable)`,
+      );
       if (blocking > 0) {
         record(
           "schemathesis",
