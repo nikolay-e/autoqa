@@ -379,6 +379,211 @@ console.log("Phase 2 — schemathesis gate counts failures across ALL phases");
   );
 }
 
+console.log(
+  "Phase 3 — schemathesis classifier reconciles CF edge 5xx + RFC7807 4xx (#29/#30)",
+);
+{
+  const reconDir = freshReports();
+  writeFileSync(
+    join(reconDir, "schemathesis.txt"),
+    [
+      " ❌  Coverage (in 88.35s)",
+      "     ✅ 71 passed  ❌  2 failed",
+      " ❌  Fuzzing (in 504.10s)",
+      "     ✅ 70 passed  ❌  2 failed",
+      "=================================== FAILURES ===================================",
+      "_____________________ DELETE /v1/groups/{groupId}/schedule _____________________",
+      "1. Test Case ID: crvFSN",
+      "",
+      "- Server error",
+      "",
+      "[520] Unknown:",
+      "",
+      "    `<!DOCTYPE html>",
+      "    <title>example.com | 520: Web server is returning an unknown error</title>`",
+      "",
+      "____________________ POST /v1/me/devices/{sessionId}/command ___________________",
+      "1. Test Case ID: 4CtQYm",
+      "",
+      "- API rejected schema-compliant request",
+      "",
+      "    Valid data should have been accepted",
+      "    Expected: 2xx, 401, 403, 404, 409, 5xx",
+      "",
+      "[400] Bad Request:",
+      "",
+      '    `{"type":"about:blank","title":"Bad Request","status":400,"detail":"Unknown command: "}`',
+      "",
+      "____________________ POST /v1/sessions/{sessionId}/signals _____________________",
+      "1. Test Case ID: 0tHKMj",
+      "",
+      "- API rejected schema-compliant request",
+      "",
+      "[400] Bad Request:",
+      "",
+      '    `{"type":"about:blank","title":"Bad Request","status":400,"detail":"UUID string too large"}`',
+      "",
+      "=================================== SUMMARY ====================================",
+      "",
+      "Test cases:",
+      "  7421 generated, 3 found 3 unique failures, 1 skipped",
+      "",
+      "================== 3 failures, 3 warnings in 637.34s ==================",
+      "",
+    ].join("\n"),
+  );
+  const reconRun = runNode("aggregate-gate.mjs", {
+    QA_REPORTS_DIR: reconDir,
+    QA_GATE_CRAWLER_ENABLED: "false",
+    QA_GATE_SCHEMATHESIS_ENABLED: "true",
+    QA_GATE_SCHEMATHESIS_FAIL: "true",
+  });
+  ok(
+    reconRun.code === 0,
+    "CF edge 520 + clean RFC7807 400s fully reconcile -> gate passes",
+  );
+  ok(
+    /1 Cloudflare edge 5xx transient/.test(reconRun.out),
+    "CF edge block surfaced as informational",
+  );
+  ok(
+    /2 schema-compliant request\(s\) rejected with structured RFC7807/.test(
+      reconRun.out,
+    ),
+    "problem+json 4xx blocks surfaced as informational",
+  );
+
+  const originDir = freshReports();
+  writeFileSync(
+    join(originDir, "schemathesis.txt"),
+    [
+      " ❌  Fuzzing (in 10s)",
+      "     ✅ 70 passed  ❌  1 failed",
+      "=================================== FAILURES ===================================",
+      "_____________________ GET /v1/things _____________________",
+      "1. Test Case ID: aaaaaa",
+      "",
+      "- Server error",
+      "",
+      "[500] Internal Server Error:",
+      "",
+      '    `{"error":"NullPointerException"}`',
+      "",
+      "=================================== SUMMARY ====================================",
+      "",
+      "Test cases:",
+      "  100 generated, 1 found 1 unique failures",
+      "",
+      "================== 1 failures in 10.00s ==================",
+      "",
+    ].join("\n"),
+  );
+  const originRun = runNode("aggregate-gate.mjs", {
+    QA_REPORTS_DIR: originDir,
+    QA_GATE_CRAWLER_ENABLED: "false",
+    QA_GATE_SCHEMATHESIS_ENABLED: "true",
+    QA_GATE_SCHEMATHESIS_FAIL: "true",
+  });
+  ok(originRun.code === 1, "origin 500 (non-CF body) still blocks");
+}
+
+console.log(
+  "Phase 3 — schemathesis v4 'N error' summary gates (network errors)",
+);
+{
+  const errDir = freshReports();
+  writeFileSync(
+    join(errDir, "schemathesis.txt"),
+    [
+      " 🚫  Fuzzing (in 504.10s)",
+      "     ✅ 70 passed  🚫  1 error",
+      "==================================== ERRORS ====================================",
+      "___________________________ GET /v1/recommend/search ___________________________",
+      "Network Error",
+      "",
+      "Read timed out after 10.0 seconds",
+      "",
+      "=================================== SUMMARY ====================================",
+      "",
+      "Test cases:",
+      "  742 generated, 1 skipped",
+      "",
+      "================== 1 error, 3 warnings in 63.34s ==================",
+      "",
+    ].join("\n"),
+  );
+  const errRun = runNode("aggregate-gate.mjs", {
+    QA_REPORTS_DIR: errDir,
+    QA_GATE_CRAWLER_ENABLED: "false",
+    QA_GATE_SCHEMATHESIS_ENABLED: "true",
+    QA_GATE_SCHEMATHESIS_FAIL: "true",
+  });
+  ok(errRun.code === 1, "v4 'N error' summary line gates even with 0 failed");
+  ok(
+    /1 errored case/.test(errRun.out),
+    "gate names the errored-case count from the v4 summary",
+  );
+}
+
+console.log("Phase 3 — ZAP auto-skip (no Docker) is non-blocking (#31)");
+{
+  const zapSkipDir = freshReports();
+  writeFileSync(
+    join(zapSkipDir, "zap-skipped.txt"),
+    "no usable Docker daemon\n",
+  );
+  const zapSkipRun = runNode("aggregate-gate.mjs", {
+    QA_REPORTS_DIR: zapSkipDir,
+    QA_GATE_CRAWLER_ENABLED: "false",
+    QA_GATE_ZAP_ENABLED: "true",
+    QA_GATE_ZAP_FAIL: "true",
+  });
+  ok(zapSkipRun.code === 0, "zap-skipped marker -> gate does not block");
+  ok(
+    /ZAP skipped — no usable Docker daemon/.test(zapSkipRun.out),
+    "gate names the skip reason loudly",
+  );
+}
+
+console.log("Phase 3 — baseline updates on schedule/workflow_dispatch runs");
+{
+  const schedDir = freshReports();
+  const findingsPath = join(schedDir, "crawler-findings.json");
+  writeFileSync(
+    findingsPath,
+    JSON.stringify({
+      jsErrors: [{ path: "/", error: "boom", fingerprint: "fp-sched-1" }],
+    }),
+  );
+  writeFileSync(join(schedDir, "baseline", "baseline.json"), "[]");
+  const schedDiff = runNode("baseline-diff.mjs", {
+    QA_REPORTS_DIR: schedDir,
+    CRAWL_FINDINGS_PATH: findingsPath,
+    QA_BASELINE_DIR: join(schedDir, "baseline"),
+    GITHUB_EVENT_NAME: "schedule",
+    GITHUB_REF_NAME: "main",
+    GITHUB_BASE_REF: "",
+  });
+  ok(schedDiff.code === 0, "baseline-diff exits 0 on schedule event");
+  ok(
+    readFileSync(join(schedDir, "baseline", "baseline.json"), "utf8").includes(
+      "fp-sched-1",
+    ),
+    "schedule run overwrites the baseline (was push-only)",
+  );
+
+  const gateRun = runNode("aggregate-gate.mjs", {
+    QA_REPORTS_DIR: schedDir,
+    QA_GATE_CRAWLER_ENABLED: "true",
+    QA_GATE_BASELINE_ENABLED: "true",
+    QA_GATE_CRAWLER_FAIL: "true",
+  });
+  ok(
+    gateRun.code === 0,
+    "fresh findings on schedule run warn (alarm-once), not block",
+  );
+}
+
 console.log("");
 if (failures > 0) {
   console.error(`SELFTEST FAILED: ${failures} assertion(s)`);

@@ -364,11 +364,15 @@ runs:
         QA_BASELINE_DIR: /tmp/qa-reports/baseline
 
     - name: Save crawler baseline
-      if: inputs.crawler-enabled == 'true' && inputs.baseline-enabled == 'true' && github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'master')
+      # schedule/workflow_dispatch consumers (nightly post-deploy QA) update the
+      # baseline too — push-only saving left them on a permanent "first run".
+      # The run_id suffix keeps the key reservable when the SHA repeats
+      # (nightly cron on an unchanged main); restore picks the newest prefix match.
+      if: inputs.crawler-enabled == 'true' && inputs.baseline-enabled == 'true' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && (github.ref_name == 'main' || github.ref_name == 'master')
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: /tmp/qa-reports/baseline
-        key: autoqa-baseline-${{ github.repository }}-${{ github.ref_name }}-${{ github.sha }}
+        key: autoqa-baseline-${{ github.repository }}-${{ github.ref_name }}-${{ github.sha }}-${{ github.run_id }}
 
     - name: Upload screenshots to Argos
       if: inputs.crawler-enabled == 'true' && inputs.argos-enabled == 'true'

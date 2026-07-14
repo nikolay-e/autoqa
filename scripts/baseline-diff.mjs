@@ -140,8 +140,14 @@ function main() {
   if (fixed.length > 0) md += renderTable(fixed, "Fixed findings");
   writeSummary(md);
 
-  const isMainPush = EVENT_NAME === "push" && MAIN_BRANCHES.has(REF_NAME);
-  if (isMainPush) {
+  const BASELINE_UPDATING_EVENTS = new Set([
+    "push",
+    "schedule",
+    "workflow_dispatch",
+  ]);
+  const isMainRun =
+    BASELINE_UPDATING_EVENTS.has(EVENT_NAME) && MAIN_BRANCHES.has(REF_NAME);
+  if (isMainRun) {
     mkdirSync(BASELINE_DIR, { recursive: true });
     copyFileSync(FINDINGS_PATH, BASELINE_PATH);
     console.log(`Baseline saved to ${BASELINE_PATH}`);

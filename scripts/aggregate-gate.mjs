@@ -159,7 +159,8 @@ function gateCrawler() {
     }
     if (fresh.length > 0) {
       const baselineUpdatedOnMainPush =
-        diff.eventName === "push" && ["main", "master"].includes(diff.refName);
+        ["push", "schedule", "workflow_dispatch"].includes(diff.eventName) &&
+        ["main", "master"].includes(diff.refName);
       const noBaselineYet = diff.baselinePresent === false;
       const notBlocking =
         (baselineUpdatedOnMainPush && !BASELINE_FAIL_ON_NEW) || noBaselineYet;
@@ -239,6 +240,22 @@ function maxFailedCount(out) {
     max = Math.max(max, Number(m[1]));
   }
   return max;
+}
+
+// Schemathesis 3 printed "N errored"; Schemathesis 4 counts errors only in the
+// final ruled line ("== 3 failures, 1 error, 3 warnings in 637.34s =="). Phase
+// lines ("🚫 1 error") and section headers are not ruled, so restricting the
+// v4 match to ruled lines avoids counting the same error twice or matching
+// prose like "Network Error".
+function erroredCount(out) {
+  const v3 = out.match(/(\d+)\s+errored/i);
+  if (v3) return Number(v3[1]);
+  for (const line of out.split("\n")) {
+    if (!/^={5,}.*={5,}$/.test(line.trim())) continue;
+    const m = line.match(/(\d+)\s+errors?\b/i);
+    if (m) return Number(m[1]);
+  }
+  return 0;
 }
 
 // The FAILURES section prints one block per failing OPERATION, and the summary's
@@ -352,6 +369,19 @@ function gateSchemathesis() {
   }
   const out = readFileSync(txt, "utf8");
 
+  // Schemathesis 4 reports internal/network errors ("🚫 Network Error: read
+  // timed out") as "N error(s)" in the final ruled summary line — the v3
+  // wording "N errored" is gone, and errors are counted separately from
+  // failures, so they must gate even when the failures branch also fires.
+  const errors = erroredCount(out);
+  if (errors > 0) {
+    record(
+      "schemathesis",
+      "fail",
+      `schemathesis reported ${errors} errored case(s) (network errors / timeouts — the API never answered)`,
+    );
+  }
+
   const total = maxFailedCount(out);
   if (total > 0) {
     // An API that documents JSON/problem+json error bodies cannot itself
@@ -401,15 +431,7 @@ function gateSchemathesis() {
     record("schemathesis", "fail", `schemathesis reported ${total} failure(s)`);
     return;
   }
-  const errorMatch = out.match(/(\d+)\s+errored/i);
-  if (errorMatch && Number(errorMatch[1]) > 0) {
-    record(
-      "schemathesis",
-      "fail",
-      `schemathesis reported ${errorMatch[1]} errored case(s)`,
-    );
-    return;
-  }
+  if (errors > 0) return;
   if (/ERROR:|^Error:/m.test(out) && !/0 failed/i.test(out)) {
     const firstError = out
       .split("\n")
@@ -425,6 +447,19 @@ function gateZap() {
   if (!ENABLED.zap) return;
   const reportPath = `${REPORTS}/zap-report.json`;
   if (!existsSync(reportPath)) {
+    // run-zap.sh writes zap-skipped.txt when ZAP physically cannot run
+    // (no Docker daemon — the in-cluster/portable-image case). Gating on the
+    // never-produced report turned every such run into a permanent blocking
+    // fail that masked real findings underneath it. Ref: issue #31.
+    if (existsSync(`${REPORTS}/zap-skipped.txt`)) {
+      const reason = readFileSync(`${REPORTS}/zap-skipped.txt`, "utf8").trim();
+      record(
+        "zap",
+        "info",
+        `ZAP skipped — ${reason}; zap-enabled=true has no effect here (mount a Docker socket, run ZAP via the GitHub Action path, or set zap-enabled=false)`,
+      );
+      return;
+    }
     // run-zap.sh no-ops (exit 0, no zap-report.json) when openapi.json is
     // absent — that happens when schemathesis's spec download failed (or
     // schemathesis-enabled=false). That is a real problem worth surfacing,

@@ -45,8 +45,11 @@ if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
   echo "ZAP runs as the official zaproxy container. To use it from the autoqa"
   echo "image, mount the host socket (-v /var/run/docker.sock:/var/run/docker.sock)"
   echo "with a host-path report dir, or run ZAP via the GitHub Action path."
+  echo "no usable Docker daemon" > /tmp/qa-reports/zap-skipped.txt
   exit 0
 fi
+
+rm -f /tmp/qa-reports/zap-skipped.txt
 
 echo "Running OWASP ZAP..."
 # ZAP image runs as uid 1000; GitHub runner workspace is owned by uid 1001.
