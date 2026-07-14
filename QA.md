@@ -352,6 +352,47 @@ real console-error findings. `monkey.js` now drops `net::ERR_ABORTED`
 request-failures at capture time. Real network failures (DNS, reset, refused,
 CORS console errors, 5xx responses) are unaffected.
 
+## Monkey recorded findings from off-origin pages (fixed 2026-07-14)
+
+The monkey's `framenavigated` guard walks back after wandering off-origin, but
+every listener (`pageerror`, `console-error`, `request-failed`, `http-5xx`)
+kept recording while the foreign page was loading — a hidden-gem run attributed
+~45 request-failures to `en.wikipedia.org` pages. Same origin-boundary
+semantics the crawler got in issue #27: `record()` now drops findings whose
+page URL is off-origin (the `off-origin-nav` breadcrumb itself stays).
+
+## run-zap.sh: Docker check must precede the openapi.json check (fixed 2026-07-14)
+
+Only the no-Docker branch writes `zap-skipped.txt` (the #31 non-blocking
+marker). With the openapi check first, a portable-image consumer with
+`zap-enabled=true`, no Docker AND no spec exited before the marker was
+written, so `gateZap` blocked with the misleading "check the schemathesis
+step" message. No Docker dominates: ZAP can never run there regardless of the
+spec, so that check now runs first.
+
+## Rerunning a GC'd/failed Argo autoqa workflow manually
+
+The sensors only fire on image events, so to reproduce a flaky consumer run:
+`kubectl -n argo-workflows get wf <name> -o json | jq '{apiVersion, kind, metadata: {generateName: "<app>-autoqa-", namespace: "argo-workflows", labels: (.metadata.labels | with_entries(select(.key | startswith("workflows.argoproj.io") | not)))}, spec}' | kubectl create -f -`
+— the spec is just `workflowTemplateRef` + `arguments` + `serviceAccountName`,
+so the copy reruns the current template (including its current image pin).
+**Strip the `workflows.argoproj.io/*` labels**: a completed workflow carries
+`workflows.argoproj.io/completed: "true"`, and a copy created with it is
+silently ignored by the controller forever (no status, no pod, no events).
+
+## OOMKilled consumer runs: correlate with the TARGET app build, not the autoqa image
+
+2026-07-14: yay-tsa autoqa runs OOMKilled (exit 137) at the WorkflowTemplate's
+3Gi limit, 2/2 against app build `main-8c07a90`, while the run against the
+previous app build `main-53bfd48` finished the full pipeline at the same limit
+with an effectively identical autoqa image (same schemathesis v4.21.10). The
+kill landed in DIFFERENT phases (schemathesis once, mid-crawl once) — gradual
+Chromium memory growth against the heavier app, not one hungry autoqa step.
+Verdict: consumer-app finding (filed `yay-tsa#291`) + gitops mitigation
+(limit 3Gi → 6Gi). When a consumer autoqa run OOMs, first diff the app SHA the
+runs targeted (`Waiting … to serve main-<sha7>` in the log header) before
+suspecting an autoqa regression.
+
 ## axe-core dies on control chars in attribute values (upstream)
 
 `img[alt=" \f¼"]` (raw form-feed U+000C in the alt, garbage data on
