@@ -143,11 +143,16 @@ function attachListeners(page) {
   });
   page.on("requestfailed", (req) => {
     const url = req.url();
+    const errorText = req.failure()?.errorText || "";
+    // ERR_ABORTED is the browser cancelling its own in-flight request when the
+    // monkey navigates away or the SPA tears down a component — not a server
+    // or network defect. Observed drowning real findings 200:1 on SPAs.
+    if (errorText === "net::ERR_ABORTED") return;
     if (!isExcluded(url))
       record(
         "request-failed",
         page.url(),
-        `${redactUrlSecrets(url)} ${req.failure()?.errorText || ""}`,
+        `${redactUrlSecrets(url)} ${errorText}`,
       );
   });
   page.on("response", (res) => {
