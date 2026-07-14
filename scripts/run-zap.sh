@@ -3,6 +3,22 @@ set -euo pipefail
 
 mkdir -p /tmp/qa-reports
 
+# The Docker check must come FIRST: in a no-Docker environment ZAP can never
+# run regardless of whether openapi.json exists, and only this branch writes
+# the zap-skipped.txt marker that keeps the gate non-blocking (issue #31).
+# With the openapi check first, "no Docker + no spec" exited without the
+# marker and the gate mis-blamed the schemathesis step.
+if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+  echo "Skipping ZAP — no usable Docker daemon."
+  echo "ZAP runs as the official zaproxy container. To use it from the autoqa"
+  echo "image, mount the host socket (-v /var/run/docker.sock:/var/run/docker.sock)"
+  echo "with a host-path report dir, or run ZAP via the GitHub Action path."
+  echo "no usable Docker daemon" > /tmp/qa-reports/zap-skipped.txt
+  exit 0
+fi
+
+rm -f /tmp/qa-reports/zap-skipped.txt
+
 if [ -z "${QA_BASE_URL:-}" ] || [ ! -f /tmp/qa-reports/openapi.json ]; then
   echo "Skipping ZAP — QA_BASE_URL not set or openapi.json not found"
   echo "Hint: enable Schemathesis first (it downloads the spec) or provide openapi.json manually"
@@ -39,17 +55,6 @@ if [ -n "${TOKEN}" ]; then
     -config replacer.full_list(0).matchstr=Authorization \
     -config replacer.full_list(0).replacement=\"Bearer ${TOKEN}\"")
 fi
-
-if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
-  echo "Skipping ZAP — no usable Docker daemon."
-  echo "ZAP runs as the official zaproxy container. To use it from the autoqa"
-  echo "image, mount the host socket (-v /var/run/docker.sock:/var/run/docker.sock)"
-  echo "with a host-path report dir, or run ZAP via the GitHub Action path."
-  echo "no usable Docker daemon" > /tmp/qa-reports/zap-skipped.txt
-  exit 0
-fi
-
-rm -f /tmp/qa-reports/zap-skipped.txt
 
 echo "Running OWASP ZAP..."
 # ZAP image runs as uid 1000; GitHub runner workspace is owned by uid 1001.
