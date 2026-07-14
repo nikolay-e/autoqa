@@ -241,10 +241,47 @@ function maxFailedCount(out) {
   return max;
 }
 
+// The FAILURES section prints one block per failing OPERATION, and the summary's
+// "X found Y unique failures" line reports exactly that X. The per-phase "N failed"
+// counters cannot reconcile against blocks: an operation failing in two phases is
+// merged into one block, and different phases fail different operation sets — the
+// per-phase max both over- and under-counts (observed: phases 4/2 vs 5 blocks).
+function reportedFailureBlocks(out) {
+  const m = out.match(/(\d+)\s+found\s+\d+\s+unique failures/i);
+  if (m) return Number(m[1]);
+  return maxFailedCount(out);
+}
+
+// Cloudflare answers for a dead/rolling origin with its own edge error pages on
+// these statuses; a block whose every response is one of them AND whose body is
+// identifiably the Cloudflare error page is a deploy-window/load transient, not
+// an app bug (issue #29). Origin 5xx (500/501/503 JSON, half-written streams)
+// never matches: the body check requires the Cloudflare page.
+const CF_EDGE_STATUSES = new Set([
+  "502",
+  "504",
+  "520",
+  "521",
+  "522",
+  "523",
+  "524",
+  "525",
+  "526",
+  "527",
+  "530",
+]);
+
 function classifySchemathesis(out) {
   const failIdx = out.search(/={6,}\s*FAILURES\s*={6,}/);
   const summaryIdx = out.search(/={6,}\s*SUMMARY\s*={6,}/);
-  if (failIdx === -1) return { preServlet: 0, blocking: 0, reconciled: false };
+  if (failIdx === -1)
+    return {
+      preServlet: 0,
+      edgeTransient: 0,
+      cleanReject: 0,
+      blocking: 0,
+      reconciled: false,
+    };
   const section = out.slice(
     failIdx,
     summaryIdx === -1 ? out.length : summaryIdx,
@@ -252,6 +289,8 @@ function classifySchemathesis(out) {
   // Blocks are delimited by underscore-ruled headers: "____ GET /path ____".
   const rawBlocks = section.split(/^_{3,}.*_{3,}$/m).slice(1);
   let preServlet = 0;
+  let edgeTransient = 0;
+  let cleanReject = 0;
   let blocking = 0;
   for (const block of rawBlocks) {
     const findingTypes = [...block.matchAll(/^- (.+)$/gm)].map((m) =>
@@ -270,13 +309,31 @@ function classifySchemathesis(out) {
       receivedCTs.every((ct) => ct.startsWith("text/html"));
     const all4xx =
       statuses.length > 0 && statuses.every((s) => s.startsWith("4"));
+    const allCfEdge =
+      statuses.length > 0 && statuses.every((s) => CF_EDGE_STATUSES.has(s));
+    // Two Cloudflare page shapes: the bare nginx-style page (`<center>cloudflare</center>`)
+    // and the branded error page whose `<title>` is "<host> | 502: Bad gateway" — the
+    // report often truncates the branded page before the word "cloudflare" appears.
+    const cfBody = /cloudflare/i.test(block) || /\|\s*5\d\d:\s/.test(block);
+    // positive_data_acceptance on an API that answered a structured RFC7807 4xx is
+    // semantic validation the JSON Schema cannot express (unknown-id 400s, cross-field
+    // rules) — informational, never blocking (issue #30). 5xx and non-problem bodies
+    // (HTML error pages, empty bodies) stay blocking.
+    const onlyRejectedValid = findingTypes.every(
+      (f) => f === "API rejected schema-compliant request",
+    );
+    const problemJsonBody = /`\{"type":/.test(block);
     if (onlyContentType && allHtml && all4xx) preServlet++;
+    else if (allCfEdge && cfBody) edgeTransient++;
+    else if (onlyRejectedValid && all4xx && problemJsonBody) cleanReject++;
     else blocking++;
   }
-  const parsedTotal = preServlet + blocking;
-  const reportedTotal = maxFailedCount(out) || -1;
+  const parsedTotal = preServlet + edgeTransient + cleanReject + blocking;
+  const reportedTotal = reportedFailureBlocks(out) || -1;
   return {
     preServlet,
+    edgeTransient,
+    cleanReject,
     blocking,
     reconciled: parsedTotal > 0 && parsedTotal === reportedTotal,
   };
@@ -307,13 +364,31 @@ function gateSchemathesis() {
     // container's URI parser. These are not app bugs and cannot be fixed in
     // app code; surface them as informational, never blocking. 5xx text/html
     // (e.g. a half-written binary stream) stays blocking. Ref: issue #8/#11.
-    const { preServlet, blocking, reconciled } = classifySchemathesis(out);
-    if (reconciled && preServlet > 0) {
-      record(
-        "schemathesis",
-        "info",
-        `${preServlet} pre-servlet container rejection(s) (text/html 4xx on malformed input — not app-fixable)`,
-      );
+    const { preServlet, edgeTransient, cleanReject, blocking, reconciled } =
+      classifySchemathesis(out);
+    const reconciledAny = preServlet + edgeTransient + cleanReject > 0;
+    if (reconciled && reconciledAny) {
+      if (preServlet > 0) {
+        record(
+          "schemathesis",
+          "info",
+          `${preServlet} pre-servlet container rejection(s) (text/html 4xx on malformed input — not app-fixable)`,
+        );
+      }
+      if (edgeTransient > 0) {
+        record(
+          "schemathesis",
+          "info",
+          `${edgeTransient} Cloudflare edge 5xx transient(s) (deploy-window/load — re-verify on the settled origin)`,
+        );
+      }
+      if (cleanReject > 0) {
+        record(
+          "schemathesis",
+          "info",
+          `${cleanReject} schema-compliant request(s) rejected with structured RFC7807 4xx (semantic validation the schema cannot express)`,
+        );
+      }
       if (blocking > 0) {
         record(
           "schemathesis",
