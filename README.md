@@ -93,6 +93,14 @@ really the limiter's 429/403 (the attack never reached the DB) otherwise reds th
 gate. The alert still blocks if it also fires on an un-gated path, and an alert
 with no instance data fails safe and stays blocking. Default empty — opt-in.
 
+**Write-endpoint hygiene:** Schemathesis exercises authenticated `POST`/`PUT`
+endpoints with real requests, so create-endpoints accumulate junk resources on
+the QA account run over run (fuzzer names like `%s%n%x%d`, control chars). Use a
+dedicated QA account, exclude create-endpoints you don't want fuzzed via
+`schemathesis-exclude-paths`, and clean the QA account periodically (a
+`DELETE`-loop over resources the fuzzer created). autoqa cannot clean up
+generically — it does not know your delete endpoints.
+
 ### Monkey / chaos UI test (try to break it)
 
 ```yaml

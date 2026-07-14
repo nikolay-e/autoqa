@@ -26,7 +26,7 @@ Project-specific QA methodology learnings for this repo. Generic patterns live i
 
 The autoqa self-test on `example.com` exercises a narrow happy path (no auth, no OpenAPI, no ZAP, no AuthZ matrix, single seed page) plus a short **monkey** run (`monkey-enabled`, 15s, seed 1337) and an **image build/publish** job. Real defects in autoqa surface against the CONSUMER apps — Cloudflare interactions, login redirects, OpenAPI variants, ZAP container quirks, schemathesis edge cases, etc. A green self-test does NOT mean autoqa is healthy.
 
-> **Two consumer surfaces (post-migration).** Only **`yay-tsa`** still consumes autoqa as a **GitHub Action** (`uses: nikolay-e/autoqa@<sha>`) — the `gh`-based sweep below finds it. The **Argo Workflows** consumers run the **portable image** via gitops (a per-app `submit-autoqa` sensor trigger → the `autoqa` WorkflowTemplate, `ci/ci-platform/` in the gitops repo), NOT a `.github/workflows` pin. As of 2026-07-09 there are **9** of them — enumerate authoritatively from the sensors, never from memory (the set keeps growing): `grep -rl submit-autoqa ~/gitops/kubernetes/ci/ci-platform/sensor-*-image.yaml`. Current set: `andrii-bardakov-com`, `hidden-gem`, `life-as-code`, `lingua-quiz`, `nikolay-eremeev-com`, `pflegescore`, `tanyalytvyn-com`, `toy-projects`, `wealth-as-code`. For those, the run log is the Argo Workflow pod (`kubectl -n argo-workflows logs <app>-autoqa-<id>`), and "is it wired" is the gitops sensor/WorkflowTemplate, not a workflow-file grep.
+> **Two consumer surfaces (post-migration).** As of 2026-07-14 the only **GitHub Action** consumer (`uses: nikolay-e/autoqa@<sha>`) is **`hidden-gem`** (`post-deploy-qa.yml`, nightly `schedule` cron — `yay-tsa` dropped its GH workflow and moved fully to Argo). The **Argo Workflows** consumers run the **portable image** via gitops (a per-app `submit-autoqa` sensor trigger → the `autoqa` WorkflowTemplate, `ci/ci-platform/` in the gitops repo), NOT a `.github/workflows` pin. As of 2026-07-14 there are **10** of them — enumerate authoritatively from the sensors, never from memory (the set keeps changing): `grep -rl submit-autoqa ~/gitops/kubernetes/ci/ci-platform/sensor-*-image.yaml`. Current set: `andrii-bardakov-com`, `hidden-gem`, `life-as-code`, `lingua-quiz`, `nikolay-eremeev-com`, `pflegescore`, `tanyalytvyn-com`, `toy-projects`, `wealth-as-code`, `yay-tsa` (hidden-gem is on BOTH surfaces). For those, the run log is the Argo Workflow pod (`kubectl -n argo-workflows logs <app>-autoqa-<id>`), and "is it wired" is the gitops sensor/WorkflowTemplate, not a workflow-file grep.
 
 **Every `/qa` pass on this repo MUST:**
 
@@ -42,7 +42,7 @@ The autoqa self-test on `example.com` exercises a narrow happy path (no auth, no
    done
    ```
 
-   Note the `while IFS= read -r` loops: **zsh does not word-split unquoted `$files`** like bash, so a naive `for f in $files` iterates once over the whole blob and silently finds nothing. **Post-migration (2026-06-21) this `.github/workflows` sweep only finds `yay-tsa`** — the only remaining GitHub-Action consumer. The 8 Argo consumers (see the two-surfaces note above) are enumerated from the gitops `submit-autoqa` sensors (`grep -rl submit-autoqa ~/gitops/kubernetes/ci/ci-platform/`), not from `gh`.
+   Note the `while IFS= read -r` loops: **zsh does not word-split unquoted `$files`** like bash, so a naive `for f in $files` iterates once over the whole blob and silently finds nothing. **As of 2026-07-14 this `.github/workflows` sweep only finds `hidden-gem`** — the only remaining GitHub-Action consumer. The 10 Argo consumers (see the two-surfaces note above) are enumerated from the gitops `submit-autoqa` sensors (`grep -rl submit-autoqa ~/gitops/kubernetes/ci/ci-platform/`), not from `gh`.
 
 2. For each consumer: pull the most recent `post-deploy-qa` (or equivalent) CI log with `gh run list -R <repo> --workflow=ci.yml --limit 5` → `gh run view -R <repo> --job <id> --log`.
 3. Grep each log for symptoms that originate in autoqa code (not in the consumer's app):
@@ -96,7 +96,7 @@ The autoqa self-test on `example.com` exercises a narrow happy path (no auth, no
 
 - Every tool step in `action.yml` carries `continue-on-error: true` so one tool's crash never silently skips the rest. The cost: each tool's exit code is also swallowed, so a green CI used to ship 200 broken links, ZAP HIGH alerts, or schemathesis 5xx failures (issue #3).
 - The fix is **not** to drop `continue-on-error` — that would prevent ZAP from running after a flaky schemathesis call. Instead, `scripts/aggregate-gate.mjs` re-derives pass/fail from the report files in `/tmp/qa-reports/` after all tools have run, and exits 1 when any enabled tool's `*-fail-on-violations` input is true and its report shows blocking content.
-- Gates per tool: `crawler` (baseline-diff fresh count on PR; on push-to-main fresh findings only warn unless `baseline-fail-on-new=true` makes them fail that one run — alarm-once, the baseline update in the same run keeps the next run green; or any finding when baseline-enabled=false), `schemathesis` (schemathesis.txt `\d+ failed` — the MAX across all phase-summary lines; Schemathesis 4 prints one per phase (Examples/Coverage/Fuzzing/Stateful), so the first match under-counts and a leading `0 failed` phase would mask later failures entirely), `zap` (`zap-report.json` alerts with `riskcode=3`), `mechanical` (P0 findings; default off — advisory), `observatory` (grade vs `observatory-fail-grade`), `authz` (`authz-matrix.json findings[].issues.length > 0`).
+- Gates per tool: `crawler` (baseline-diff fresh count on PR; on push-to-main fresh findings only warn unless `baseline-fail-on-new=true` makes them fail that one run — alarm-once, the baseline update in the same run keeps the next run green; or any finding when baseline-enabled=false), `schemathesis` (schemathesis.txt `\d+ failed` — the MAX across all phase-summary lines; Schemathesis 4 prints one per phase (Examples/Coverage/Fuzzing/Stateful), so the first match under-counts and a leading `0 failed` phase would mask later failures entirely; errored cases gate separately via the v4 ruled summary line `N error(s)`), `zap` (`zap-report.json` alerts with `riskcode=3`), `mechanical` (P0 findings; default off — advisory), `observatory` (grade vs `observatory-fail-grade`), `authz` (`authz-matrix.json findings[].issues.length > 0`).
 - The gate is the LAST step in the composite, after artifact upload, so reports always upload even when the gate fails.
 
 ## StandardFinding backbone + COMPLETE report
@@ -124,7 +124,7 @@ A consumer gate-fail of `schemathesis reported N failure(s)` is NOT automaticall
 
 Schemathesis 4.x reports auth-negative coverage (401 on auth-protected ops) as a separate `Authentication failed: N operations` notice, NOT inside the `N failed` count the gate parses — so documented 401s no longer red the gate (this closed #8; no autoqa code change was needed, the version behaviour already separates them). Verified live on the yay-tsa sweep 2026-06-21: a 71-operation `Authentication failed` block sat in WARNINGS while the gate counted only the one real failure.
 
-**Cloudflare `52x` origin-error on malformed schemathesis input is a CONSUMER finding, never a classifier downgrade.** yay-tsa sweep 2026-06-21 surfaced a blocking `POST /v1/sessions/{sessionId}/signals → Received: 520` (CF "Web server is returning an unknown error" HTML page) when schemathesis sent a null-byte body + undecodable `%`-encoded path param. `classifySchemathesis` correctly kept it blocking (text/html **5xx** stays blocking by design — see "Composite `continue-on-error`" gate rules). Do **NOT** add a `520`–`524`/`530` downgrade to the classifier to silence these: a 52x on malformed input is exactly the origin-crash-on-bad-input case we WANT to catch (the app should answer `400/422`, not sever the upstream into a CF 520). A genuinely rollout-transient 520 (origin mid-restart) is indistinguishable in one report, so the right fix lives in the consumer's rollout-wait gate, not in autoqa. Filed as `yay-tsa#252`.
+**Cloudflare `52x` handling was REVERSED by #29 (2026-07-14, commit `e133303`) — the 2026-06-21 "never downgrade" rule below is history, kept for context.** Original position (yay-tsa sweep 2026-06-21, filed `yay-tsa#252`): a 52x on malformed input is the origin-crash-on-bad-input case we want to catch, so no classifier downgrade. What changed: single-replica consumers running autoqa on the push webhook race their own ~40s rollout window, and every such run recorded CF edge-error pages as blocking failures with zero real defects (issue #29) — the false-positive rate beat the crash-catching value. Current behavior: `classifySchemathesis` downgrades a failure block to informational `edgeTransient` only when **every** response status in the block is a CF edge status (502/504/52x/530) AND the body is identifiably Cloudflare's own error page (`cloudflare` text or the `NNN: <reason>` title). Origin 5xx with non-CF bodies (JSON, half-written streams) still block. The residual risk — an origin that crashes into a CF 520 on malformed input is now info, not fail — is accepted; the finding still appears in the report as an edge-transient info line, so it is visible, just not gating. Covered by selftest Phase 3.
 
 ## crawler-decorative-paths (resolves #11 part 1)
 
@@ -315,6 +315,63 @@ gitignored by default and broke `npx prettier --check "**/*.{js,mjs,json,yml,yam
 locally (though never committed, so CI was unaffected). Added `.playwright-mcp/` to
 `.gitignore` and deleted the stray directory. If a local prettier run reports
 failures only under `.playwright-mcp/`, this is why — not a real formatting bug.
+
+## Baseline was push-only — schedule/cron consumers never persisted one (fixed 2026-07-14)
+
+`action.yml`'s `Save crawler baseline` gated on `github.event_name == 'push'` and
+`baseline-diff.mjs` only overwrote the baseline on `isMainPush`. A consumer whose
+only autoqa runs are cron (`schedule`, e.g. hidden-gem's nightly post-deploy-qa)
+therefore NEVER saved a baseline: every night logged `Cache not found for input
+keys` → `baseline: absent (first run)` → all findings "new, not blocking" — the
+baseline gate was permanently inert and the report cried "N NEW" forever. Fix:
+both sides now treat `schedule` and `workflow_dispatch` on main/master as
+baseline-updating, and the save key gained a `-${{ github.run_id }}` suffix
+(GitHub caches are immutable — a nightly re-run on the same SHA could never
+re-reserve the old key; restore-keys prefix matching picks the newest). Symptom
+to grep for in consumer logs: `Cache not found for input keys` on every run of a
+cron-only consumer. Covered by selftest Phase 3.
+
+## Schemathesis 4 counts errors as "N error", not v3's "N errored"
+
+The v4 report separates **failures** (assertion blocks) from **errors** (network
+errors / read timeouts, `🚫` ERRORS section), and the only machine-countable
+error total is the final ruled line (`== 3 failures, 1 error, 3 warnings in
+637.34s ==`). The gate's old `(\d+)\s+errored` regex matched neither, so errored
+cases were silently un-gated — a real 10s read-timeout DoS finding on yay-tsa
+(`GET /v1/recommend/search?limit=77508`, filed yay-tsa#288) sailed through a
+"green" schemathesis gate. `erroredCount()` now reads the v4 ruled summary line
+(v3 wording kept as fallback) and errors gate independently of the
+failures/classifier branch. Covered by selftest Phase 3.
+
+## Monkey: net::ERR_ABORTED request-failures are navigation noise
+
+A yay-tsa monkey run recorded 209 unique findings, ~all `request-failed …
+net::ERR_ABORTED` — the browser cancelling its own in-flight requests when the
+monkey navigates away mid-load (standard SPA behavior), drowning the handful of
+real console-error findings. `monkey.js` now drops `net::ERR_ABORTED`
+request-failures at capture time. Real network failures (DNS, reset, refused,
+CORS console errors, 5xx responses) are unaffected.
+
+## axe-core dies on control chars in attribute values (upstream)
+
+`img[alt=" \f¼"]` (raw form-feed U+000C in the alt, garbage data on
+pflegescore's feed) makes axe-core's `generateSelector` emit an unescaped —
+therefore invalid — attribute selector; `Element.matches` throws and the WHOLE
+page's axe audit fails (`axe failed on /feed.html: … is not a valid selector`).
+Verified: `CSS.escape` on the value fixes it. Upstream: `dequelabs/axe-core#5204`;
+consumer data bug: `pflegescore#1`. When a consumer log shows `axe failed on
+<page>` with "not a valid selector", inspect the page's attribute values for
+control characters — it's data, not the crawler.
+
+## Native confirm() dialogs on consumer pages stall the crawler login
+
+wealth-as-code's /login pops a native `confirm("Доступна новая версия.
+Обновить?")` version-update prompt (filed as Forgejo `wealth-as-code#1`).
+Playwright auto-dismisses dialogs when no handler is attached, but a
+version-check that fires `confirm()` + `location.reload()` loops can still stall
+selector waits. If a consumer's crawler login times out waiting for a selector
+that exists on manual inspection, check for native dialogs first
+(`browser_handle_dialog` shows them in Playwright MCP).
 
 ---
 
