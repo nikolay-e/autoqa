@@ -100,7 +100,21 @@ function normalize(msg) {
 const findings = new Map();
 let actionsPerformed = 0;
 
+function isOffOrigin(where) {
+  if (!originHost) return false;
+  try {
+    return new URL(where).host !== originHost;
+  } catch {
+    return false;
+  }
+}
+
 function record(kind, where, message) {
+  // Events firing while the monkey is on a foreign page (before the
+  // framenavigated guard walks it back) describe the third-party site, not
+  // the target app — same origin boundary the crawler enforces (issue #27).
+  // The off-origin-nav breadcrumb itself stays: it documents the excursion.
+  if (kind !== "off-origin-nav" && isOffOrigin(where)) return;
   const fp = fingerprint(kind, normalize(message), where);
   if (findings.has(fp)) {
     findings.get(fp).count++;
