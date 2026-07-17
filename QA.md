@@ -287,7 +287,7 @@ Faster per-consumer latest-log lookup: `mc ls -r "argologs/argo-workflows-artifa
 mc alias points at `localhost:19000` — start `kubectl -n minio port-forward svc/minio 19000:9000`
 first, or every `mc` call fails with exit 1. Note
 `toy-projects` never produces `toy-projects-autoqa-*` workflows — its sensor submits
-per-sub-app `papagai-autoqa-*` and `touch-typing-autoqa-*`; sweep those prefixes.
+per-sub-app `vocontrol-autoqa-*` and `touch-typing-autoqa-*`; sweep those prefixes.
 
 ## Reported URLs are redacted at capture time (api_key leak class)
 
