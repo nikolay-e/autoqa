@@ -211,6 +211,12 @@ async function crawlPage(page, path) {
     const sourceUrl = msg.location().url || "";
     if (isIgnoredConsoleMessage(text, sourceUrl)) return;
     if (CSP_VIOLATION_PATTERN.test(text)) {
+      // Cloudflare's bot-challenge machinery injects scripts under its
+      // reserved /cdn-cgi/challenge-platform/ namespace only on runs it
+      // decides to challenge. The app's CSP blocking them describes
+      // Cloudflare's injection, not app content — and the intermittency
+      // makes the finding flap new→fixed→new in the baseline forever.
+      if (text.includes("/cdn-cgi/challenge-platform/")) return;
       cspIssues.push({
         path,
         message: text.slice(0, 300),

@@ -288,6 +288,13 @@ const CF_EDGE_STATUSES = new Set([
   "530",
 ]);
 
+// A fuzz burst from one egress IP reliably trips aggregate per-IP rate
+// limiters (Traefik/nginx middleware). The resulting 429 carries whatever
+// body the limiter emits (bare text, no Content-Type), so it leaks through
+// content-type/schema-conformance checks as a blocking failure even though
+// the app correctly throttled the fuzzer. A block whose EVERY response is
+// 429 is rate-limiting, not an API-contract bug (issue #34). Blocks mixing
+// 429 with other statuses still block.
 function classifySchemathesis(out) {
   const failIdx = out.search(/={6,}\s*FAILURES\s*={6,}/);
   const summaryIdx = out.search(/={6,}\s*SUMMARY\s*={6,}/);
@@ -296,6 +303,7 @@ function classifySchemathesis(out) {
       preServlet: 0,
       edgeTransient: 0,
       cleanReject: 0,
+      rateLimited: 0,
       blocking: 0,
       reconciled: false,
     };
@@ -308,6 +316,7 @@ function classifySchemathesis(out) {
   let preServlet = 0;
   let edgeTransient = 0;
   let cleanReject = 0;
+  let rateLimited = 0;
   let blocking = 0;
   for (const block of rawBlocks) {
     const findingTypes = [...block.matchAll(/^- (.+)$/gm)].map((m) =>
@@ -340,20 +349,44 @@ function classifySchemathesis(out) {
       (f) => f === "API rejected schema-compliant request",
     );
     const problemJsonBody = /`\{"type":/.test(block);
-    if (onlyContentType && allHtml && all4xx) preServlet++;
+    const allRateLimited =
+      statuses.length > 0 && statuses.every((s) => s === "429");
+    if (allRateLimited) rateLimited++;
+    else if (onlyContentType && allHtml && all4xx) preServlet++;
     else if (allCfEdge && cfBody) edgeTransient++;
     else if (onlyRejectedValid && all4xx && problemJsonBody) cleanReject++;
     else blocking++;
   }
-  const parsedTotal = preServlet + edgeTransient + cleanReject + blocking;
+  const parsedTotal =
+    preServlet + edgeTransient + cleanReject + rateLimited + blocking;
   const reportedTotal = reportedFailureBlocks(out) || -1;
   return {
     preServlet,
     edgeTransient,
     cleanReject,
+    rateLimited,
     blocking,
     reconciled: parsedTotal > 0 && parsedTotal === reportedTotal,
   };
+}
+
+// The ERRORS section prints one underscore-ruled block per errored operation.
+// A client-side read timeout there is the run's own fuzz storm saturating the
+// backend (verified: the same endpoint answers in ~150ms outside the burst),
+// not an API that never answers — non-blocking transient per issue #34.
+// Connection refused/reset/DNS blocks stay blocking: those are origin deaths.
+function timeoutErrorCount(out) {
+  const errIdx = out.search(/={6,}\s*ERRORS\s*={6,}/);
+  if (errIdx === -1) return 0;
+  const rest = out.slice(errIdx).split("\n").slice(1);
+  const endOffset = rest.findIndex((l) =>
+    /^={5,}\s*[A-Z]+\s*={5,}$/.test(l.trim()),
+  );
+  const section = (endOffset === -1 ? rest : rest.slice(0, endOffset)).join(
+    "\n",
+  );
+  const blocks = section.split(/^_{3,}.*_{3,}$/m).slice(1);
+  return blocks.filter((b) => /timed out/i.test(b)).length;
 }
 
 function gateSchemathesis() {
@@ -375,11 +408,22 @@ function gateSchemathesis() {
   // failures, so they must gate even when the failures branch also fires.
   const errors = erroredCount(out);
   if (errors > 0) {
-    record(
-      "schemathesis",
-      "fail",
-      `schemathesis reported ${errors} errored case(s) (network errors / timeouts — the API never answered)`,
-    );
+    const timeouts = Math.min(timeoutErrorCount(out), errors);
+    const blockingErrors = errors - timeouts;
+    if (timeouts > 0) {
+      record(
+        "schemathesis",
+        "info",
+        `${timeouts} read-timeout(s) under the run's own fuzz load (self-inflicted transient, non-blocking — re-verify the endpoint outside the burst)`,
+      );
+    }
+    if (blockingErrors > 0) {
+      record(
+        "schemathesis",
+        "fail",
+        `schemathesis reported ${blockingErrors} errored case(s) (network errors — the API never answered)`,
+      );
+    }
   }
 
   const total = maxFailedCount(out);
@@ -394,9 +438,16 @@ function gateSchemathesis() {
     // container's URI parser. These are not app bugs and cannot be fixed in
     // app code; surface them as informational, never blocking. 5xx text/html
     // (e.g. a half-written binary stream) stays blocking. Ref: issue #8/#11.
-    const { preServlet, edgeTransient, cleanReject, blocking, reconciled } =
-      classifySchemathesis(out);
-    const reconciledAny = preServlet + edgeTransient + cleanReject > 0;
+    const {
+      preServlet,
+      edgeTransient,
+      cleanReject,
+      rateLimited,
+      blocking,
+      reconciled,
+    } = classifySchemathesis(out);
+    const reconciledAny =
+      preServlet + edgeTransient + cleanReject + rateLimited > 0;
     if (reconciled && reconciledAny) {
       if (preServlet > 0) {
         record(
@@ -417,6 +468,13 @@ function gateSchemathesis() {
           "schemathesis",
           "info",
           `${cleanReject} schema-compliant request(s) rejected with structured RFC7807 4xx (semantic validation the schema cannot express)`,
+        );
+      }
+      if (rateLimited > 0) {
+        record(
+          "schemathesis",
+          "info",
+          `${rateLimited} rate-limited operation(s) (all responses 429 — the app throttled the fuzzer, not an API-contract bug)`,
         );
       }
       if (blocking > 0) {

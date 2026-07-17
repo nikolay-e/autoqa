@@ -488,7 +488,7 @@ console.log(
 }
 
 console.log(
-  "Phase 3 — schemathesis v4 'N error' summary gates (network errors)",
+  "Phase 3 — schemathesis v4 errors: timeouts are transients, the rest gates (#34)",
 );
 {
   const errDir = freshReports();
@@ -496,9 +496,54 @@ console.log(
     join(errDir, "schemathesis.txt"),
     [
       " 🚫  Fuzzing (in 504.10s)",
-      "     ✅ 70 passed  🚫  1 error",
+      "     ✅ 70 passed  🚫  2 errors",
       "==================================== ERRORS ====================================",
       "___________________________ GET /v1/recommend/search ___________________________",
+      "Network Error",
+      "",
+      "Read timed out after 10.0 seconds",
+      "",
+      "___________________________ POST /v1/groups ___________________________",
+      "Network Error",
+      "",
+      "Connection reset by peer",
+      "",
+      "=================================== SUMMARY ====================================",
+      "",
+      "Test cases:",
+      "  742 generated, 1 skipped",
+      "",
+      "================== 2 errors, 3 warnings in 63.34s ==================",
+      "",
+    ].join("\n"),
+  );
+  const errRun = runNode("aggregate-gate.mjs", {
+    QA_REPORTS_DIR: errDir,
+    QA_GATE_CRAWLER_ENABLED: "false",
+    QA_GATE_SCHEMATHESIS_ENABLED: "true",
+    QA_GATE_SCHEMATHESIS_FAIL: "true",
+  });
+  ok(
+    errRun.code === 1,
+    "non-timeout network error (connection reset) still gates",
+  );
+  ok(
+    /1 errored case/.test(errRun.out),
+    "gate counts only the non-timeout errors as blocking",
+  );
+  ok(
+    /1 read-timeout/.test(errRun.out),
+    "read-timeout surfaced as a non-blocking transient",
+  );
+
+  const timeoutOnlyDir = freshReports();
+  writeFileSync(
+    join(timeoutOnlyDir, "schemathesis.txt"),
+    [
+      " 🚫  Fuzzing (in 504.10s)",
+      "     ✅ 70 passed  🚫  1 error",
+      "==================================== ERRORS ====================================",
+      "___________________________ GET /Artists ___________________________",
       "Network Error",
       "",
       "Read timed out after 10.0 seconds",
@@ -512,16 +557,108 @@ console.log(
       "",
     ].join("\n"),
   );
-  const errRun = runNode("aggregate-gate.mjs", {
-    QA_REPORTS_DIR: errDir,
+  const timeoutOnlyRun = runNode("aggregate-gate.mjs", {
+    QA_REPORTS_DIR: timeoutOnlyDir,
     QA_GATE_CRAWLER_ENABLED: "false",
     QA_GATE_SCHEMATHESIS_ENABLED: "true",
     QA_GATE_SCHEMATHESIS_FAIL: "true",
   });
-  ok(errRun.code === 1, "v4 'N error' summary line gates even with 0 failed");
   ok(
-    /1 errored case/.test(errRun.out),
-    "gate names the errored-case count from the v4 summary",
+    timeoutOnlyRun.code === 0,
+    "read-timeout-only errors do not gate (self-inflicted fuzz load)",
+  );
+}
+
+console.log(
+  "Phase 3 — schemathesis all-429 failure blocks are rate-limiting, not bugs (#34)",
+);
+{
+  const rlDir = freshReports();
+  writeFileSync(
+    join(rlDir, "schemathesis.txt"),
+    [
+      " ❌  Coverage (in 88.35s)",
+      "     ✅ 71 passed  ❌  2 failed",
+      "=================================== FAILURES ===================================",
+      "_____________________ POST /v1/groups _____________________",
+      "1. Test Case ID: aaaaaa",
+      "",
+      "- Missing Content-Type header",
+      "",
+      "[429] Too Many Requests:",
+      "",
+      "    `Too Many Requests`",
+      "",
+      "_____________________ GET /v1/things _____________________",
+      "1. Test Case ID: bbbbbb",
+      "",
+      "- Server error",
+      "",
+      "[500] Internal Server Error:",
+      "",
+      '    `{"error":"NullPointerException"}`',
+      "",
+      "=================================== SUMMARY ====================================",
+      "",
+      "Test cases:",
+      "  100 generated, 2 found 2 unique failures",
+      "",
+      "================== 2 failures in 10.00s ==================",
+      "",
+    ].join("\n"),
+  );
+  const rlRun = runNode("aggregate-gate.mjs", {
+    QA_REPORTS_DIR: rlDir,
+    QA_GATE_CRAWLER_ENABLED: "false",
+    QA_GATE_SCHEMATHESIS_ENABLED: "true",
+    QA_GATE_SCHEMATHESIS_FAIL: "true",
+  });
+  ok(rlRun.code === 1, "origin 500 alongside a 429 block still gates");
+  ok(
+    /1 rate-limited operation/.test(rlRun.out),
+    "all-429 block surfaced as informational rate-limiting",
+  );
+  ok(
+    /reported 1 failure/.test(rlRun.out),
+    "only the non-429 block counts as blocking",
+  );
+
+  const rlOnlyDir = freshReports();
+  writeFileSync(
+    join(rlOnlyDir, "schemathesis.txt"),
+    [
+      " ❌  Coverage (in 88.35s)",
+      "     ✅ 71 passed  ❌  1 failed",
+      "=================================== FAILURES ===================================",
+      "_____________________ POST /v1/groups _____________________",
+      "1. Test Case ID: cccccc",
+      "",
+      "- Missing Content-Type header",
+      "",
+      "- JSON deserialization error",
+      "",
+      "[429] Too Many Requests:",
+      "",
+      "    `Too Many Requests`",
+      "",
+      "=================================== SUMMARY ====================================",
+      "",
+      "Test cases:",
+      "  100 generated, 1 found 1 unique failures",
+      "",
+      "================== 1 failures in 10.00s ==================",
+      "",
+    ].join("\n"),
+  );
+  const rlOnlyRun = runNode("aggregate-gate.mjs", {
+    QA_REPORTS_DIR: rlOnlyDir,
+    QA_GATE_CRAWLER_ENABLED: "false",
+    QA_GATE_SCHEMATHESIS_ENABLED: "true",
+    QA_GATE_SCHEMATHESIS_FAIL: "true",
+  });
+  ok(
+    rlOnlyRun.code === 0,
+    "all-429-only failures fully reconcile -> gate passes",
   );
 }
 
