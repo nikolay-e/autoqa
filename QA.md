@@ -26,7 +26,7 @@ Project-specific QA methodology learnings for this repo. Generic patterns live i
 
 The autoqa self-test on `example.com` exercises a narrow happy path (no auth, no OpenAPI, no ZAP, no AuthZ matrix, single seed page) plus a short **monkey** run (`monkey-enabled`, 15s, seed 1337) and an **image build/publish** job. Real defects in autoqa surface against the CONSUMER apps — Cloudflare interactions, login redirects, OpenAPI variants, ZAP container quirks, schemathesis edge cases, etc. A green self-test does NOT mean autoqa is healthy.
 
-> **Two consumer surfaces (post-migration).** As of 2026-07-14 the only **GitHub Action** consumer (`uses: nikolay-e/autoqa@<sha>`) is **`hidden-gem`** (`post-deploy-qa.yml`, nightly `schedule` cron — `yay-tsa` dropped its GH workflow and moved fully to Argo). The **Argo Workflows** consumers run the **portable image** via gitops (a per-app `submit-autoqa` sensor trigger → the `autoqa` WorkflowTemplate, `ci/ci-platform/` in the gitops repo), NOT a `.github/workflows` pin. As of 2026-07-14 there are **10** of them — enumerate authoritatively from the sensors, never from memory (the set keeps changing): `grep -rl submit-autoqa ~/gitops/kubernetes/ci/ci-platform/sensor-*-image.yaml`. Current set: `andrii-bardakov-com`, `hidden-gem`, `life-as-code`, `lingua-quiz`, `nikolay-eremeev-com`, `pflegescore`, `tanyalytvyn-com`, `toy-projects`, `wealth-as-code`, `yay-tsa` (hidden-gem is on BOTH surfaces). For those, the run log is the Argo Workflow pod (`kubectl -n argo-workflows logs <app>-autoqa-<id>`), and "is it wired" is the gitops sensor/WorkflowTemplate, not a workflow-file grep.
+> **Two consumer surfaces (post-migration).** As of 2026-07-14 the only **GitHub Action** consumer (`uses: nikolay-e/autoqa@<sha>`) is **`hidden-gem`** (`post-deploy-qa.yml`, nightly `schedule` cron — `yay-tsa` dropped its GH workflow and moved fully to Argo). The **Argo Workflows** consumers run the **portable image** via gitops (a per-app `submit-autoqa` sensor trigger → the `autoqa` WorkflowTemplate, `ci/ci-platform/` in the gitops repo), NOT a `.github/workflows` pin. As of 2026-07-17 there are **11** of them — enumerate authoritatively from the sensors, never from memory (the set keeps changing): `grep -rl submit-autoqa ~/gitops/kubernetes/ci/ci-platform/sensor-*-image.yaml`. Current set: `andrii-bardakov-com`, `hidden-gem`, `life-as-code`, `lingua-quiz`, `nikolay-eremeev-com`, `pflegescore`, `tanyalytvyn-com`, `toy-projects`, `vocontrol` (split out of toy-projects into its own Forgejo repo `nikolay-e/vocontrol` + sensor), `wealth-as-code`, `yay-tsa` (hidden-gem is on BOTH surfaces). For those, the run log is the Argo Workflow pod (`kubectl -n argo-workflows logs <app>-autoqa-<id>`), and "is it wired" is the gitops sensor/WorkflowTemplate, not a workflow-file grep.
 
 **Every `/qa` pass on this repo MUST:**
 
@@ -286,8 +286,9 @@ Faster per-consumer latest-log lookup: `mc ls -r "argologs/argo-workflows-artifa
 (prefix-scoped recursion, real mtimes, lexicographic date sort works). The `argologs`
 mc alias points at `localhost:19000` — start `kubectl -n minio port-forward svc/minio 19000:9000`
 first, or every `mc` call fails with exit 1. Note
-`toy-projects` never produces `toy-projects-autoqa-*` workflows — its sensor submits
-per-sub-app `vocontrol-autoqa-*` and `touch-typing-autoqa-*`; sweep those prefixes.
+`toy-projects` never produces `toy-projects-autoqa-*` workflows — its sensor now
+submits only `touch-typing-autoqa-*` (`vocontrol` has its own repo + sensor since
+2026-07-17); sweep those prefixes.
 
 ## Reported URLs are redacted at capture time (api_key leak class)
 
@@ -403,6 +404,35 @@ Verified: `CSS.escape` on the value fixes it. Upstream: `dequelabs/axe-core#5204
 consumer data bug: `pflegescore#1`. When a consumer log shows `axe failed on
 <page>` with "not a valid selector", inspect the page's attribute values for
 control characters — it's data, not the crawler.
+
+## Schemathesis 429 + self-inflicted read-timeouts are non-blocking (#34, 2026-07-17)
+
+Two more `classifySchemathesis`/error-gate downgrades, same FP-vs-catch-value trade
+as the CF-edge reversal (#29):
+
+- A FAILURES block whose **every** response status is `429` → info `rateLimited`
+  (any body — infra limiters answer bare text that trips content-type/schema
+  conformance; the app throttling the fuzzer is not an API-contract bug). Blocks
+  mixing 429 with other statuses still block.
+- An ERRORS block containing `timed out` → info transient (the run's own fuzz
+  burst saturating the backend; verified same endpoint ~150ms outside the burst).
+  Non-timeout network errors (connection reset/refused, DNS) still gate — those
+  are origin deaths. Residual risk accepted: a REAL slow-endpoint DoS (the
+  yay-tsa#288 class) now surfaces as info, not fail — it stays visible in the
+  report. Live cases this closed: yay-tsa `GET /Artists` (StartIndex=false),
+  lingua-quiz `GET /api/tts/languages`. Covered by selftest Phase 3.
+
+## Cloudflare challenge-platform CSP findings are dropped at capture (2026-07-17)
+
+vocontrol (CF-fronted, in-cluster crawler IP gets challenged intermittently)
+failed 2 runs in one day on "NEW" CSP violations for
+`/cdn-cgi/challenge-platform/...` scripts. Fingerprints were already
+hash-normalized — the flapping is INTERMITTENCY: challenge-free runs mark the
+findings "fixed" (removed from baseline), the next challenged run re-alarms
+them as new, forever. Baseline can never absorb a finding that appears only
+when Cloudflare decides to challenge. Fix: `crawl.js` drops CSP-violation
+console messages mentioning `/cdn-cgi/challenge-platform/` at capture time —
+it is Cloudflare's reserved injection namespace, never app content.
 
 ## Native confirm() dialogs on consumer pages stall the crawler login
 
