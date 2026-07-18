@@ -100,3 +100,17 @@ done
 
 echo "Running Schemathesis..."
 st "${ST_ARGS[@]}" 2>&1 | tee /tmp/qa-reports/schemathesis.txt
+
+# --output-sanitize cleans the human report but NOT the ndjson events stream:
+# the transport-level request Authorization header (the live Bearer token)
+# lands there verbatim. Scrub before the file leaves the container (it uploads
+# with the reports artifact). Best-effort — never let a scrub failure fail the
+# run, but do delete the file if the scrubber itself errors, so an unscrubbed
+# token can never ship.
+if [ -f /tmp/qa-reports/schemathesis-events.ndjson ]; then
+  SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  if ! node "${SCRIPT_DIR}/redact-events.mjs" /tmp/qa-reports/schemathesis-events.ndjson; then
+    echo "redact-events failed — deleting events file so no unscrubbed token ships"
+    rm -f /tmp/qa-reports/schemathesis-events.ndjson
+  fi
+fi

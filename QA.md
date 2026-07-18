@@ -463,7 +463,15 @@ sha, event, vantage}`. Emission is try/catch-wrapped — it can never affect
   (same pattern as zap-skipped #31).
 - `run-schemathesis.sh` also captures `--report ndjson` engine events
   (`schemathesis-events.ndjson`, capture-only) — fixture collection for the
-  regex→structured parser migration (#36).
+  regex→structured parser migration (#36). **CRITICAL:** schemathesis
+  `--output-sanitize` cleans the human report but NOT the ndjson events
+  stream — the transport-level request `Authorization` header (the live
+  Bearer token) lands there verbatim (confirmed on a yay-tsa run: 684×). So
+  `scripts/redact-events.mjs` scrubs the file (secret-named keys at any depth
+  - Bearer/Basic + secret query params) before it leaves the container, and
+    the file is DELETED if the scrubber errors — an unscrubbed token can never
+    ship. Covered by selftest Phase 4. When adding any new `--report`/artifact
+    that echoes requests, re-check it for the same leak.
 
 ## Schemathesis 429 + self-inflicted read-timeouts are non-blocking (#34, 2026-07-17)
 

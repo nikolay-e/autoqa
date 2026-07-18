@@ -892,6 +892,47 @@ console.log(
   );
 }
 
+console.log("Phase 4 — schemathesis events ndjson is scrubbed of secrets");
+{
+  const evDir = freshReports();
+  const evPath = join(evDir, "schemathesis-events.ndjson");
+  writeFileSync(
+    evPath,
+    [
+      JSON.stringify({
+        type: "request",
+        headers: {
+          Authorization: "Bearer c765e485ef874d7837886d9f282d262a82b0906a",
+          Accept: "application/json",
+        },
+        url: "https://h/api?api_key=deadbeefcafe1234&x=1",
+      }),
+      JSON.stringify({
+        type: "response",
+        headers: { "Set-Cookie": "sid=secretcookievalue123" },
+      }),
+      "unparseable line",
+      "",
+    ].join("\n"),
+  );
+  const ev = runNode("redact-events.mjs", {}, [evPath]);
+  ok(ev.code === 0, "redact-events exits 0");
+  const scrubbed = readFileSync(evPath, "utf8");
+  ok(
+    !/c765e485|deadbeefcafe1234|secretcookievalue123/.test(scrubbed),
+    "no known secret survives in the scrubbed events file",
+  );
+  ok(
+    /"Authorization":"REDACTED"/.test(scrubbed) &&
+      /api_key=REDACTED/.test(scrubbed),
+    "Authorization header and secret query param redacted",
+  );
+  ok(
+    !/unparseable line/.test(scrubbed),
+    "unparseable line dropped (never emitted un-scrubbed)",
+  );
+}
+
 console.log("");
 if (failures > 0) {
   console.error(`SELFTEST FAILED: ${failures} assertion(s)`);

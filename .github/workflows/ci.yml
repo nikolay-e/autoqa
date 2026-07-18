@@ -31,6 +31,7 @@ jobs:
       - run: node --check lib/finding-schema.mjs
       - run: node --check lib/gate-rules.mjs
       - run: node --check scripts/warehouse.mjs
+      - run: node --check scripts/redact-events.mjs
       - run: node --check scripts/normalize-findings.mjs
       - run: node --check scripts/generate-qa-report.mjs
       - run: node --check scripts/selftest.mjs
