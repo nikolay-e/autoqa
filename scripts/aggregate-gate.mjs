@@ -16,7 +16,14 @@
 //
 // Refs: https://github.com/nikolay-e/autoqa/issues/3
 
-import { readFileSync, existsSync } from "node:fs";
+import {
+  readFileSync,
+  existsSync,
+  writeFileSync,
+  appendFileSync,
+  mkdirSync,
+} from "node:fs";
+import { GATE_RULES } from "../lib/gate-rules.mjs";
 
 const REPORTS = process.env.QA_REPORTS_DIR || "/tmp/qa-reports";
 const EVENT_NAME = process.env.GITHUB_EVENT_NAME || "";
@@ -103,8 +110,10 @@ function allInstancesRateLimited(alert) {
 
 const findings = [];
 
-function record(tool, severity, message, details = null) {
-  findings.push({ tool, severity, message, details });
+function record(tool, severity, message, details = null, ruleId = null) {
+  if (ruleId && !GATE_RULES[ruleId])
+    console.log(`warning: unregistered gate rule id '${ruleId}'`);
+  findings.push({ tool, severity, message, details, ruleId });
 }
 
 function readJson(path) {
@@ -155,6 +164,7 @@ function gateCrawler() {
         decorative
           .slice(0, 10)
           .map((f) => `${f.label || f.category} @ ${f.path}: ${f.summary}`),
+        "crawler-decorative-paths",
       );
     }
     if (fresh.length > 0) {
@@ -178,6 +188,7 @@ function gateCrawler() {
         fresh
           .slice(0, 10)
           .map((f) => `${f.label || f.category} @ ${f.path}: ${f.summary}`),
+        "baseline-alarm-once",
       );
     }
     return;
@@ -415,6 +426,8 @@ function gateSchemathesis() {
         "schemathesis",
         "info",
         `${timeouts} read-timeout(s) under the run's own fuzz load (self-inflicted transient, non-blocking — re-verify the endpoint outside the burst)`,
+        null,
+        "fuzz-read-timeout",
       );
     }
     if (blockingErrors > 0) {
@@ -454,6 +467,8 @@ function gateSchemathesis() {
           "schemathesis",
           "info",
           `${preServlet} pre-servlet container rejection(s) (text/html 4xx on malformed input — not app-fixable)`,
+          null,
+          "preservlet-4xx-html",
         );
       }
       if (edgeTransient > 0) {
@@ -461,6 +476,8 @@ function gateSchemathesis() {
           "schemathesis",
           "info",
           `${edgeTransient} Cloudflare edge 5xx transient(s) (deploy-window/load — re-verify on the settled origin)`,
+          null,
+          "cf-edge-transient",
         );
       }
       if (cleanReject > 0) {
@@ -468,6 +485,8 @@ function gateSchemathesis() {
           "schemathesis",
           "info",
           `${cleanReject} schema-compliant request(s) rejected with structured RFC7807 4xx (semantic validation the schema cannot express)`,
+          null,
+          "rfc7807-clean-reject",
         );
       }
       if (rateLimited > 0) {
@@ -475,6 +494,8 @@ function gateSchemathesis() {
           "schemathesis",
           "info",
           `${rateLimited} rate-limited operation(s) (all responses 429 — the app throttled the fuzzer, not an API-contract bug)`,
+          null,
+          "rate-limited-429",
         );
       }
       if (blocking > 0) {
@@ -515,6 +536,8 @@ function gateZap() {
         "zap",
         "info",
         `ZAP skipped — ${reason}; zap-enabled=true has no effect here (mount a Docker socket, run ZAP via the GitHub Action path, or set zap-enabled=false)`,
+        null,
+        "zap-skipped-no-docker",
       );
       return;
     }
@@ -565,6 +588,7 @@ function gateZap() {
       "info",
       `${downgraded.length} HIGH ZAP alert(s) downgraded — every instance on a declared rate-limited/auth-gated path (#7)`,
       downgraded.slice(0, 10),
+      "zap-rate-limited-paths",
     );
   }
   if (highs.length > 0) {
@@ -733,11 +757,71 @@ const summary = lines.join("\n");
 console.log(summary);
 if (SUMMARY_PATH) {
   try {
-    const { appendFileSync } = await import("node:fs");
     appendFileSync(SUMMARY_PATH, summary);
   } catch (err) {
     console.log(`Failed to write step summary: ${err.message}`);
   }
+}
+
+// Warehouse emission: one NDJSON row per gate decision (with rule_id) and per
+// normalized finding (with fingerprint), stamped with run identity. Written to
+// the reports dir (artifact upload) and appended to QA_FINDINGS_LOG_DIR when a
+// persistent dir is mounted (baseline PVC / GH cache) so history accumulates
+// per consumer. Emission must never affect the gate verdict.
+function emitFindingsLog() {
+  const consumerUrl = process.env.QA_URL || process.env.QA_BASE_URL || "";
+  let consumer = process.env.GITHUB_REPOSITORY || "";
+  try {
+    if (consumerUrl) consumer = new URL(consumerUrl).host;
+  } catch {
+    /* keep repository fallback */
+  }
+  const meta = {
+    ts: new Date().toISOString(),
+    consumer: consumer || "unknown",
+    run_id: process.env.GITHUB_RUN_ID || process.env.QA_RUN_ID || "",
+    sha: process.env.GITHUB_SHA || process.env.COMMIT_SHA || "",
+    event: EVENT_NAME || process.env.QA_EVENT_NAME || "local",
+    vantage: process.env.QA_VANTAGE || "edge",
+  };
+  const rows = [];
+  for (const f of findings) {
+    rows.push({
+      ...meta,
+      kind: "gate",
+      tool: f.tool,
+      severity: f.severity,
+      rule_id: f.ruleId || null,
+      blocking: f.severity === "fail" && Boolean(FAIL_ON[f.tool]),
+      message: (f.message || "").slice(0, 300),
+    });
+  }
+  const normalized = readJson(`${REPORTS}/findings.json`);
+  if (Array.isArray(normalized)) {
+    for (const f of normalized) {
+      rows.push({
+        ...meta,
+        kind: "finding",
+        tool: f.tool || "",
+        severity: f.severity || "",
+        category: f.category || "",
+        fingerprint: f.fingerprint || "",
+      });
+    }
+  }
+  if (rows.length === 0) return;
+  const ndjson = rows.map((r) => JSON.stringify(r)).join("\n") + "\n";
+  writeFileSync(`${REPORTS}/findings-log.ndjson`, ndjson);
+  const persistDir = process.env.QA_FINDINGS_LOG_DIR || "";
+  if (persistDir) {
+    mkdirSync(persistDir, { recursive: true });
+    appendFileSync(`${persistDir}/findings-log.ndjson`, ndjson);
+  }
+}
+try {
+  emitFindingsLog();
+} catch (err) {
+  console.log(`findings-log emission failed (non-fatal): ${err.message}`);
 }
 
 if (blocking.length > 0) {

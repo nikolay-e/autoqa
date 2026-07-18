@@ -56,6 +56,13 @@ ST_ARGS=(
   run /tmp/qa-reports/openapi.json
   --url "${ST_BASE_URL}"
   --checks all
+  # Capture-only structured output (engine events, sanitized by default):
+  # nothing consumes it yet — it accumulates real fixtures so the gate's
+  # text-regex parsing can be diffed against structured ingestion and then
+  # replaced (autoqa#36). The human-readable text tee below stays the gate's
+  # source of truth until that parity diff is done.
+  --report ndjson
+  --report-ndjson-path /tmp/qa-reports/schemathesis-events.ndjson
 )
 
 # Both auth styles ride the one Authorization header, so they are mutually

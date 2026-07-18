@@ -217,5 +217,10 @@ export QA_GATE_MECHANICAL_FAIL="${QA_MECHANICAL_FAIL_ON_VIOLATIONS}"
 export QA_GATE_OBSERVATORY_FAIL="${QA_OBSERVATORY_FAIL_ON_VIOLATIONS}"
 export QA_GATE_AUTHZ_FAIL="${QA_AUTHZ_FAIL_ON_VIOLATIONS}"
 export QA_GATE_MONKEY_FAIL="${QA_MONKEY_FAIL_ON_VIOLATIONS}"
+# Warehouse: append findings-log.ndjson next to the baseline when a persistent
+# dir is mounted (the Argo PVC case), unless the caller pins its own dir.
+if [ -z "${QA_FINDINGS_LOG_DIR:-}" ] && [ -n "${QA_BASELINE_DIR:-}" ] && [ "${QA_BASELINE_DIR}" != "${REPORTS}/baseline" ]; then
+  export QA_FINDINGS_LOG_DIR="${QA_BASELINE_DIR}"
+fi
 
 node "${AUTOQA_HOME}/scripts/aggregate-gate.mjs"

@@ -226,6 +226,14 @@ runs:
           autoqa-baseline-${{ github.repository }}-main-
           autoqa-baseline-${{ github.repository }}-master-
 
+    - name: Restore findings log (warehouse history)
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: /tmp/qa-reports/findings-log-store
+        key: autoqa-findings-log-${{ github.repository }}-${{ github.run_id }}
+        restore-keys: |
+          autoqa-findings-log-${{ github.repository }}-
+
     - name: Setup Node.js (for Playwright auth)
       if: inputs.auth-url != '' && inputs.auth-mode == 'playwright'
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -477,3 +485,15 @@ runs:
         QA_GATE_MONKEY_ENABLED: ${{ inputs.monkey-enabled }}
         QA_GATE_MONKEY_FAIL: ${{ inputs.monkey-fail-on-violations }}
         QA_OBSERVATORY_FAIL_GRADE: ${{ inputs.observatory-fail-grade }}
+        QA_URL: ${{ inputs.url }}
+        QA_FINDINGS_LOG_DIR: /tmp/qa-reports/findings-log-store
+
+    # Runs AFTER the gate (if: always) so the row appended for THIS run is
+    # included; the run_id-suffixed key stays reservable on SHA repeats, and
+    # restore picks the newest prefix match (same pattern as the baseline).
+    - name: Save findings log (warehouse history)
+      if: always()
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: /tmp/qa-reports/findings-log-store
+        key: autoqa-findings-log-${{ github.repository }}-${{ github.run_id }}

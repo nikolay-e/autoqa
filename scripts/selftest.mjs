@@ -721,6 +721,91 @@ console.log("Phase 3 — baseline updates on schedule/workflow_dispatch runs");
   );
 }
 
+console.log(
+  "Phase 4 — warehouse: gate emits findings-log.ndjson with rule ids",
+);
+{
+  const whDir = freshReports();
+  const persistDir = join(whDir, "persist");
+  mkdirSync(persistDir, { recursive: true });
+  writeFileSync(
+    join(whDir, "schemathesis.txt"),
+    [
+      " 🚫  Fuzzing (in 10s)",
+      "     ✅ 70 passed  🚫  1 error",
+      "==================================== ERRORS ====================================",
+      "___________ GET /Artists ___________",
+      "Network Error",
+      "",
+      "Read timed out after 10.0 seconds",
+      "",
+      "=================================== SUMMARY ====================================",
+      "",
+      "================== 1 error in 10.00s ==================",
+      "",
+    ].join("\n"),
+  );
+  writeFileSync(
+    join(whDir, "findings.json"),
+    JSON.stringify([
+      {
+        tool: "crawler",
+        severity: "medium",
+        category: "a11y",
+        fingerprint: "fp-wh-1",
+      },
+    ]),
+  );
+  const whEnv = {
+    QA_REPORTS_DIR: whDir,
+    QA_URL: "https://warehouse.selftest",
+    QA_RUN_ID: "wh-run-1",
+    QA_GATE_CRAWLER_ENABLED: "false",
+    QA_GATE_SCHEMATHESIS_ENABLED: "true",
+    QA_GATE_SCHEMATHESIS_FAIL: "true",
+    QA_FINDINGS_LOG_DIR: persistDir,
+  };
+  runNode("aggregate-gate.mjs", whEnv);
+  const logPath = join(whDir, "findings-log.ndjson");
+  ok(existsSync(logPath), "findings-log.ndjson written to reports dir");
+  const logRows = readFileSync(logPath, "utf8")
+    .trim()
+    .split("\n")
+    .map((l) => JSON.parse(l));
+  ok(
+    logRows.some((r) => r.kind === "gate" && r.rule_id === "fuzz-read-timeout"),
+    "gate row carries the downgrade rule_id",
+  );
+  ok(
+    logRows.some((r) => r.kind === "finding" && r.fingerprint === "fp-wh-1"),
+    "normalized finding row carries the fingerprint",
+  );
+  ok(
+    logRows.every((r) => r.consumer === "warehouse.selftest"),
+    "rows stamped with the consumer host",
+  );
+  runNode("aggregate-gate.mjs", { ...whEnv, QA_RUN_ID: "wh-run-2" });
+  const persisted = readFileSync(
+    join(persistDir, "findings-log.ndjson"),
+    "utf8",
+  )
+    .trim()
+    .split("\n");
+  ok(
+    persisted.length === logRows.length * 2,
+    "persistent dir accumulates rows across runs (append)",
+  );
+  const hits = runNode("warehouse.mjs", {}, [
+    "rule-hits",
+    join(persistDir, "findings-log.ndjson"),
+  ]);
+  ok(hits.code === 0, "warehouse rule-hits query runs");
+  ok(
+    /fuzz-read-timeout\s+2\s+warehouse\.selftest/.test(hits.out),
+    "rule-hits counts both runs for the firing rule",
+  );
+}
+
 console.log("");
 if (failures > 0) {
   console.error(`SELFTEST FAILED: ${failures} assertion(s)`);

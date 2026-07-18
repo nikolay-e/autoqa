@@ -405,6 +405,37 @@ consumer data bug: `pflegescore#1`. When a consumer log shows `axe failed on
 <page>` with "not a valid selector", inspect the page's attribute values for
 control characters — it's data, not the crawler.
 
+## Findings warehouse + gate-rule lifecycle (2026-07-18)
+
+- `aggregate-gate.mjs` emits `findings-log.ndjson` every run: one `kind:"gate"`
+  row per gate decision (with `rule_id` when a downgrade rule fired, `blocking`
+  flag) + one `kind:"finding"` row per normalized StandardFinding (fingerprint,
+  tool, severity, category), all stamped with `{ts, consumer(host), run_id,
+sha, event, vantage}`. Emission is try/catch-wrapped — it can never affect
+  the verdict.
+- Persistence: GH path — `findings-log-store` cache (restore at start, save
+  AFTER the gate with `if: always()`, run_id-suffixed key like the baseline).
+  Portable path — `run-all.sh` appends to `QA_BASELINE_DIR` when the caller
+  mounted a persistent one (the Argo PVC), or to an explicit
+  `QA_FINDINGS_LOG_DIR`.
+- `lib/gate-rules.mjs` is the registry of every downgrade rule: `created`,
+  `ref`, `review_by`, `effect`. A rule silent past its `review_by` is a
+  removal candidate; a constantly-firing rule is a signal for a structural fix
+  (dual vantage #38, fuzz hygiene #40) instead of a filter. New downgrade
+  `record()` calls MUST pass a registered rule id.
+- Queries: `node scripts/warehouse.mjs <rule-hits|fingerprint-age|fp-rate>
+[--days N] <findings-log.ndjson...>` — dependency-free over NDJSON
+  (deliberate deviation from the SQLite plan: local node 22.12 lacks stable
+  `node:sqlite`, and at hundreds of rows/day in-process queries win; ad-hoc
+  SQL when needed: `sqlite3 wh.db ".mode json" ".import file.ndjson t"`-style
+  import, or jq). Covered by selftest Phase 4.
+- Retrieval: GH — download the `findings-log-store` cache or the per-run
+  artifact copy (`findings-log.ndjson` in autoqa-reports); Argo — the per-host
+  baseline PVC dir (same place `baseline.json` lives).
+- `run-schemathesis.sh` also captures `--report ndjson` engine events
+  (`schemathesis-events.ndjson`, capture-only) — fixture collection for the
+  regex→structured parser migration (#36).
+
 ## Schemathesis 429 + self-inflicted read-timeouts are non-blocking (#34, 2026-07-17)
 
 Two more `classifySchemathesis`/error-gate downgrades, same FP-vs-catch-value trade
