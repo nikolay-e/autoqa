@@ -24,7 +24,16 @@ const EXPECTED_AUTH = `Basic ${Buffer.from(`${BASIC_USER}:${BASIC_PASS}`).toStri
 const PAGE_HTML = `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>Basic Auth self-test</title></head>
-<body><main><h1>Protected page</h1><p>Visible only with credentials.</p></main></body>
+<body><main><h1>Protected page</h1><p>Visible only with credentials.</p></main>
+<script>
+  // Deliberate repeated identical error: the crawler must dedup by
+  // fingerprint (one entry, count=3), and the api_key must be redacted from
+  // the recorded message text.
+  for (let i = 0; i < 3; i++) {
+    console.error("fetch failed /api/data?api_key=deadbeefcafe1234 (attempt)");
+  }
+</script>
+</body>
 </html>`;
 
 let failures = 0;
@@ -112,6 +121,19 @@ check(
   "no broken links (main navigation got 200)",
   (withCreds.findings?.brokenLinks || []).length === 0,
   JSON.stringify(withCreds.findings?.brokenLinks),
+);
+const jsErrors = withCreds.findings?.jsErrors || [];
+check(
+  "repeated identical console.error dedups to one entry with count=3",
+  jsErrors.length === 1 && jsErrors[0].count === 3,
+  JSON.stringify(jsErrors),
+);
+check(
+  "api_key value redacted from recorded error text",
+  jsErrors.length === 1 &&
+    jsErrors[0].error.includes("api_key=REDACTED") &&
+    !jsErrors[0].error.includes("deadbeefcafe1234"),
+  JSON.stringify(jsErrors[0]),
 );
 
 console.log("\nPhase 2 — crawler WITHOUT credentials surfaces the 401");

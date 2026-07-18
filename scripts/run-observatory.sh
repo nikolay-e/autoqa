@@ -30,6 +30,11 @@ if [ "${HTTP_CODE}" != "200" ]; then
   echo "Observatory API returned HTTP ${HTTP_CODE}"
   cat "${OBS_JSON}" 2>/dev/null || true
   echo "Treating as non-fatal — Observatory hosted service may be unavailable"
+  # Marker so the gate can say "not covered" instead of silently passing —
+  # observatory.json may exist (error payload) and read as "ran". Same
+  # green-vs-unverified distinction as zap-skipped.txt (issue #31).
+  echo "Observatory API HTTP ${HTTP_CODE}" > /tmp/qa-reports/observatory-skipped.txt
+  rm -f "${OBS_JSON}"
   exit 0
 fi
 
@@ -43,8 +48,11 @@ echo "Grade: ${GRADE} · Score: ${SCORE} · Tests: ${PASSED} passed / ${FAILED} 
 if [ -z "${GRADE}" ]; then
   echo "Observatory returned no grade (scan pending or unexpected payload)"
   echo "Treating as non-fatal — not failing the gate on a missing grade"
+  echo "no grade in Observatory response (scan pending / unexpected payload)" > /tmp/qa-reports/observatory-skipped.txt
   exit 0
 fi
+
+rm -f /tmp/qa-reports/observatory-skipped.txt
 
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
   {

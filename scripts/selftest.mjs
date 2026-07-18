@@ -804,6 +804,92 @@ console.log(
     /fuzz-read-timeout\s+2\s+warehouse\.selftest/.test(hits.out),
     "rule-hits counts both runs for the firing rule",
   );
+  ok(
+    logRows.some((r) => r.kind === "run" && r.verdict === "pass"),
+    "every emission includes a kind:run row with the verdict",
+  );
+
+  // A fully green run (no gate findings, no normalized findings) must still
+  // leave a run row — otherwise the warehouse denominator dies and "0 hits"
+  // is indistinguishable from "no runs happened".
+  const emptyDir = freshReports();
+  runNode("aggregate-gate.mjs", {
+    QA_REPORTS_DIR: emptyDir,
+    QA_URL: "https://warehouse.selftest",
+    QA_GATE_CRAWLER_ENABLED: "false",
+  });
+  const emptyLog = readFileSync(join(emptyDir, "findings-log.ndjson"), "utf8")
+    .trim()
+    .split("\n")
+    .map((l) => JSON.parse(l));
+  ok(
+    emptyLog.length === 1 &&
+      emptyLog[0].kind === "run" &&
+      emptyLog[0].verdict === "pass" &&
+      emptyLog[0].gate_rows === 0,
+    "green run with zero findings still emits exactly the run row",
+  );
+}
+
+console.log(
+  "Phase 4 — schemathesis converter emits per-operation fingerprints",
+);
+{
+  const opDir = freshReports();
+  writeFileSync(
+    join(opDir, "schemathesis.txt"),
+    [
+      " ❌  Coverage (in 88.35s)",
+      "     ✅ 71 passed  ❌  2 failed",
+      "=================================== FAILURES ===================================",
+      "_____________________ POST /v1/groups _____________________",
+      "1. Test Case ID: aaaaaa",
+      "",
+      "- Missing Content-Type header",
+      "",
+      "[429] Too Many Requests:",
+      "",
+      "_____________________ GET /v1/things _____________________",
+      "1. Test Case ID: bbbbbb",
+      "",
+      "- Server error",
+      "",
+      "[500] Internal Server Error:",
+      "",
+      "==================================== ERRORS ====================================",
+      "_____________________ GET /Artists _____________________",
+      "Network Error",
+      "",
+      "Read timed out after 10.0 seconds",
+      "",
+      "=================================== SUMMARY ====================================",
+      "",
+      "================== 2 failures, 1 error in 10.00s ==================",
+      "",
+    ].join("\n"),
+  );
+  const normRun = runNode("normalize-findings.mjs", {
+    QA_REPORTS_DIR: opDir,
+  });
+  ok(normRun.code === 0, "normalize runs on sectioned schemathesis output");
+  const opFindings = JSON.parse(
+    readFileSync(join(opDir, "findings.json"), "utf8"),
+  ).filter((f) => f.tool === "schemathesis");
+  ok(
+    opFindings.length === 3,
+    `one finding per operation block (got ${opFindings.length})`,
+  );
+  ok(
+    new Set(opFindings.map((f) => f.fingerprint)).size === 3,
+    "per-operation fingerprints are distinct",
+  );
+  ok(
+    opFindings.some(
+      (f) =>
+        f.title === "GET /Artists: read-timeout" && f.severity === "medium",
+    ),
+    "errored timeout block classified read-timeout at medium severity",
+  );
 }
 
 console.log("");

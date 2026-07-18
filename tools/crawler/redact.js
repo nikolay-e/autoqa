@@ -21,6 +21,22 @@ const SECRET_QUERY_PARAMS = new Set([
   "signature",
 ]);
 
+const TEXT_QUERY_SECRET_RE = new RegExp(
+  `([?&](?:${[...SECRET_QUERY_PARAMS].join("|")})=)[^&\\s"'\`]+`,
+  "gi",
+);
+const TEXT_AUTH_SECRET_RE = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/g;
+
+// For free-form text (console messages, page errors, page URLs used as
+// locations): an app that logs its own failed fetch URL or auth header would
+// otherwise carry the secret into findings, reports and step summaries.
+export function redactTextSecrets(text) {
+  if (!text) return text;
+  return String(text)
+    .replace(TEXT_QUERY_SECRET_RE, "$1REDACTED")
+    .replace(TEXT_AUTH_SECRET_RE, "$1 REDACTED");
+}
+
 export function redactUrlSecrets(url) {
   let parsed;
   try {

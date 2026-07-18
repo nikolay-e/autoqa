@@ -226,10 +226,13 @@ runs:
           autoqa-baseline-${{ github.repository }}-main-
           autoqa-baseline-${{ github.repository }}-master-
 
+    # Store lives OUTSIDE /tmp/qa-reports on purpose: the reports dir is
+    # uploaded wholesale as the autoqa-reports artifact, and the restored
+    # HISTORY must not ride along with every run's artifact.
     - name: Restore findings log (warehouse history)
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: /tmp/qa-reports/findings-log-store
+        path: /tmp/autoqa-findings-log
         key: autoqa-findings-log-${{ github.repository }}-${{ github.run_id }}
         restore-keys: |
           autoqa-findings-log-${{ github.repository }}-
@@ -460,10 +463,19 @@ runs:
         retention-days: 7
         if-no-files-found: ignore
 
+    # The gate COMPUTES the verdict here but the step itself always exits 0;
+    # the verdict is enforced by the trivial last step below. This removes any
+    # reliance on if:always() semantics after a failed composite step — the
+    # warehouse persistence steps in between are ordinary steps that always
+    # run, on red gates included (red-run rows are the most valuable ones).
     - name: Aggregate findings and gate
       if: always()
       shell: bash
-      run: node ${{ github.action_path }}/scripts/aggregate-gate.mjs
+      run: |
+        set +e
+        node ${{ github.action_path }}/scripts/aggregate-gate.mjs
+        echo $? > /tmp/autoqa-gate-exit
+        exit 0
       env:
         QA_REPORTS_DIR: /tmp/qa-reports
         QA_GATE_CRAWLER_ENABLED: ${{ inputs.crawler-enabled }}
@@ -486,14 +498,30 @@ runs:
         QA_GATE_MONKEY_FAIL: ${{ inputs.monkey-fail-on-violations }}
         QA_OBSERVATORY_FAIL_GRADE: ${{ inputs.observatory-fail-grade }}
         QA_URL: ${{ inputs.url }}
-        QA_FINDINGS_LOG_DIR: /tmp/qa-reports/findings-log-store
+        QA_FINDINGS_LOG_DIR: /tmp/autoqa-findings-log
 
-    # Runs AFTER the gate (if: always) so the row appended for THIS run is
+    # The per-run findings-log.ndjson is born IN the gate step, after the main
+    # autoqa-reports upload — it gets its own artifact so red runs keep theirs.
+    - name: Upload findings log (this run)
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: autoqa-findings-log
+        path: /tmp/qa-reports/findings-log.ndjson
+        retention-days: 30
+        if-no-files-found: ignore
+
+    # Runs AFTER the gate computation so the rows appended for THIS run are
     # included; the run_id-suffixed key stays reservable on SHA repeats, and
     # restore picks the newest prefix match (same pattern as the baseline).
     - name: Save findings log (warehouse history)
       if: always()
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: /tmp/qa-reports/findings-log-store
+        path: /tmp/autoqa-findings-log
         key: autoqa-findings-log-${{ github.repository }}-${{ github.run_id }}
+
+    - name: Enforce gate verdict
+      if: always()
+      shell: bash
+      run: exit "$(cat /tmp/autoqa-gate-exit 2>/dev/null || echo 1)"

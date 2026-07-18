@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { chromium } from "playwright";
-import { redactUrlSecrets } from "./redact.js";
+import { redactUrlSecrets, redactTextSecrets } from "./redact.js";
 
 const BASE_URL = process.env.MONKEY_URL || "";
 const USERNAME = process.env.MONKEY_USERNAME || "";
@@ -115,6 +115,8 @@ function record(kind, where, message) {
   // the target app — same origin boundary the crawler enforces (issue #27).
   // The off-origin-nav breadcrumb itself stays: it documents the excursion.
   if (kind !== "off-origin-nav" && isOffOrigin(where)) return;
+  where = redactUrlSecrets(where);
+  message = redactTextSecrets(message);
   const fp = fingerprint(kind, normalize(message), where);
   if (findings.has(fp)) {
     findings.get(fp).count++;

@@ -2,7 +2,7 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { chromium } from "playwright";
 import AxeBuilder from "@axe-core/playwright";
-import { redactUrlSecrets } from "./redact.js";
+import { redactUrlSecrets, redactTextSecrets } from "./redact.js";
 
 const BASE_URL = process.env.CRAWL_URL || "";
 const USERNAME = process.env.CRAWL_USERNAME || "";
@@ -186,10 +186,35 @@ async function captureScreenshots(page, path) {
   }
 }
 
+// A render-loop console.error or a repeated CSP trigger fires dozens of times
+// on one page — without dedup every repeat lands as its own entry, the
+// baseline-diff "N NEW" count lies by multiples, and baseline.json bloats.
+// Same semantics as the monkey: first occurrence kept, repeats bump count.
+const seenFingerprints = new Map();
+
+function mergeUnique(target, items) {
+  for (const item of items) {
+    const prev = seenFingerprints.get(item.fingerprint);
+    if (prev) {
+      prev.count = (prev.count || 1) + 1;
+      continue;
+    }
+    item.count = 1;
+    seenFingerprints.set(item.fingerprint, item);
+    target.push(item);
+  }
+}
+
 async function crawlPage(page, path) {
   if (visited.has(path) || visited.size >= MAX_PAGES) return;
   if (isExcluded(path)) return;
   visited.add(path);
+
+  // crawlPage re-registers listeners on the shared page object every visit;
+  // stale ones from previous pages would keep firing into dead closures.
+  for (const ev of ["pageerror", "console", "request", "response"]) {
+    page.removeAllListeners(ev);
+  }
 
   const pageErrors = [];
   const networkFailures = [];
@@ -198,15 +223,16 @@ async function crawlPage(page, path) {
   const mixed = [];
 
   page.on("pageerror", (err) => {
+    const message = redactTextSecrets(err.message);
     pageErrors.push({
       path,
-      error: err.message,
-      fingerprint: fingerprint("js-error", normalizeJsError(err.message), path),
+      error: message,
+      fingerprint: fingerprint("js-error", normalizeJsError(message), path),
     });
   });
 
   page.on("console", (msg) => {
-    const text = msg.text();
+    const text = redactTextSecrets(msg.text());
     const type = msg.type();
     const sourceUrl = msg.location().url || "";
     if (isIgnoredConsoleMessage(text, sourceUrl)) return;
@@ -304,11 +330,11 @@ async function crawlPage(page, path) {
     await page.waitForTimeout(WAIT_MS);
 
     results.pagesVisited++;
-    results.jsErrors.push(...pageErrors);
-    results.networkErrors.push(...networkFailures);
+    mergeUnique(results.jsErrors, pageErrors);
+    mergeUnique(results.networkErrors, networkFailures);
     results.consoleWarnings.push(...warnings);
-    results.cspViolations.push(...cspIssues);
-    results.mixedContent.push(...mixed);
+    mergeUnique(results.cspViolations, cspIssues);
+    mergeUnique(results.mixedContent, mixed);
 
     try {
       const axeResults = await new AxeBuilder({ page })

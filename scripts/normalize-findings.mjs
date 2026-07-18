@@ -172,19 +172,67 @@ const converters = [
     });
   },
 
+  // One finding PER OPERATION block so fingerprints survive "one fix — one
+  // disappearance" (Phase-5 verification needs per-operation granularity; a
+  // single run-wide fingerprint can never disappear incrementally). Falls back
+  // to a run-wide count finding when the ruled sections are absent, counting
+  // the MAX across phase lines — a leading "0 failed" phase must not mask
+  // later failing phases (same bug the gate fixed in maxFailedCount).
   function schemathesis(add) {
     const out = readText("schemathesis.txt");
     if (!out) return;
-    const failed = out.match(/(\d+)\s+failed/i);
-    const errored = out.match(/(\d+)\s+errored/i);
-    const n = (failed && Number(failed[1])) || (errored && Number(errored[1]));
+    let emitted = 0;
+    for (const { header, kind } of [
+      { header: /={6,}\s*FAILURES\s*={6,}/, kind: "failure" },
+      { header: /={6,}\s*ERRORS\s*={6,}/, kind: "error" },
+    ]) {
+      const idx = out.search(header);
+      if (idx === -1) continue;
+      const rest = out.slice(idx).split("\n").slice(1);
+      const end = rest.findIndex((l) =>
+        /^={5,}\s*[A-Z]+\s*={5,}$/.test(l.trim()),
+      );
+      const section = (end === -1 ? rest : rest.slice(0, end)).join("\n");
+      const parts = section.split(/^_{3,}\s*(.+?)\s*_{3,}$/m);
+      for (let i = 1; i < parts.length; i += 2) {
+        const op = parts[i].trim();
+        const block = parts[i + 1] || "";
+        const types = [...block.matchAll(/^- (.+)$/gm)].map((m) => m[1].trim());
+        const klass =
+          kind === "error"
+            ? /timed out/i.test(block)
+              ? "read-timeout"
+              : "network-error"
+            : types[0] || "failure";
+        add({
+          fingerprint: fp("schemathesis", op, kind, klass),
+          tool: "schemathesis",
+          category: "api",
+          severity: klass === "read-timeout" ? "medium" : "high",
+          title: `${op}: ${klass}`,
+          url: op.split(/\s+/)[1] || "",
+          evidence: block
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean)
+            .slice(0, 6),
+        });
+        emitted++;
+      }
+    }
+    if (emitted > 0) return;
+    let maxFailed = 0;
+    for (const m of out.matchAll(/(\d+)\s+failed/gi))
+      maxFailed = Math.max(maxFailed, Number(m[1]));
+    const err = out.match(/(\d+)\s+error(?:ed|s)?\b/i);
+    const n = maxFailed || (err && Number(err[1])) || 0;
     if (!n) return;
     add({
-      fingerprint: fp("schemathesis", failed ? "failed" : "errored"),
+      fingerprint: fp("schemathesis", maxFailed ? "failed" : "errored"),
       tool: "schemathesis",
       category: "api",
       severity: "high",
-      title: `Schemathesis: ${n} ${failed ? "failed" : "errored"} case(s)`,
+      title: `Schemathesis: ${n} ${maxFailed ? "failed" : "errored"} case(s)`,
       evidence: out
         .split("\n")
         .filter((l) => /^_{3,}|FAILED|Server error|\[\d{3}\]/.test(l))
@@ -192,6 +240,10 @@ const converters = [
     });
   },
 
+  // One finding per (alert, instance pathname) — a run-wide fp(name,riskcode)
+  // collapses distinct endpoints into one fingerprint that only disappears
+  // when EVERY endpoint is fixed. Alerts with no instance data keep the
+  // alert-level fingerprint (fail-safe, same as gateZap).
   function zap(add) {
     const data = readJson("zap-report.json");
     if (!data) return;
@@ -200,17 +252,41 @@ const converters = [
         const rc = Number(alert.riskcode);
         if (rc < 1) continue;
         const severity = rc >= 3 ? "high" : rc === 2 ? "medium" : "low";
-        add({
-          fingerprint: fp("zap", alert.name, alert.riskcode),
-          tool: "zap",
-          category: "security",
-          severity,
-          title: `${alert.name} (${alert.riskdesc || ""})`.trim(),
-          evidence: (alert.instances || [])
-            .slice(0, 5)
-            .map((i) => i.uri)
-            .filter(Boolean),
-        });
+        const title = `${alert.name} (${alert.riskdesc || ""})`.trim();
+        const byPath = new Map();
+        for (const inst of alert.instances || []) {
+          if (!inst.uri) continue;
+          let pathname = inst.uri;
+          try {
+            pathname = new URL(inst.uri).pathname;
+          } catch {
+            /* keep raw uri */
+          }
+          if (!byPath.has(pathname)) byPath.set(pathname, []);
+          byPath.get(pathname).push(inst.uri);
+        }
+        if (byPath.size === 0) {
+          add({
+            fingerprint: fp("zap", alert.name, alert.riskcode),
+            tool: "zap",
+            category: "security",
+            severity,
+            title,
+            evidence: [],
+          });
+          continue;
+        }
+        for (const [pathname, uris] of [...byPath.entries()].slice(0, 20)) {
+          add({
+            fingerprint: fp("zap", alert.name, alert.riskcode, pathname),
+            tool: "zap",
+            category: "security",
+            severity,
+            title,
+            url: pathname,
+            evidence: uris.slice(0, 3),
+          });
+        }
       }
     }
   },

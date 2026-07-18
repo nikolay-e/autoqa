@@ -413,11 +413,26 @@ control characters — it's data, not the crawler.
   tool, severity, category), all stamped with `{ts, consumer(host), run_id,
 sha, event, vantage}`. Emission is try/catch-wrapped — it can never affect
   the verdict.
-- Persistence: GH path — `findings-log-store` cache (restore at start, save
-  AFTER the gate with `if: always()`, run_id-suffixed key like the baseline).
-  Portable path — `run-all.sh` appends to `QA_BASELINE_DIR` when the caller
-  mounted a persistent one (the Argo PVC), or to an explicit
-  `QA_FINDINGS_LOG_DIR`.
+- Every run also writes an unconditional `kind:"run"` row (verdict, row
+  counts) — the warehouse denominator. A green run with zero findings still
+  leaves a trace; "rule X: 0 hits" is measurable against "N runs happened".
+- Persistence: GH path — `findings-log-store` cache at
+  `/tmp/autoqa-findings-log` (OUTSIDE the reports dir on purpose: the reports
+  dir uploads wholesale as the artifact and must not carry the restored
+  history). Restore at start, save after the gate computation. Portable path —
+  `run-all.sh` appends to `QA_BASELINE_DIR` when the caller mounted a
+  persistent one (the Argo PVC), or to an explicit `QA_FINDINGS_LOG_DIR`.
+- **Gate no longer relies on post-failure composite semantics**: the gate step
+  computes the verdict, writes it to `/tmp/autoqa-gate-exit` and exits 0; the
+  log upload (`autoqa-findings-log` artifact, red runs included) and cache
+  save are ordinary steps after it; the LAST step (`Enforce gate verdict`)
+  re-raises the exit code. The old "gate is the last step" invariant became
+  "verdict enforcement is the last step".
+- Argo runs stamp `QA_RUN_ID={{workflow.name}}` and
+  `QA_TARGET_SHA={{workflow.parameters.commit-sha}}` (gitops template) so
+  rows group per-run and fingerprints tie to the TARGET app build, not
+  wall-clock. `QA_CONSUMER` overrides the host-derived identity — required
+  before dual vantage (#38) splits one consumer across two hosts.
 - `lib/gate-rules.mjs` is the registry of every downgrade rule: `created`,
   `ref`, `review_by`, `effect`. A rule silent past its `review_by` is a
   removal candidate; a constantly-firing rule is a signal for a structural fix
@@ -429,9 +444,23 @@ sha, event, vantage}`. Emission is try/catch-wrapped — it can never affect
   `node:sqlite`, and at hundreds of rows/day in-process queries win; ad-hoc
   SQL when needed: `sqlite3 wh.db ".mode json" ".import file.ndjson t"`-style
   import, or jq). Covered by selftest Phase 4.
-- Retrieval: GH — download the `findings-log-store` cache or the per-run
-  artifact copy (`findings-log.ndjson` in autoqa-reports); Argo — the per-host
-  baseline PVC dir (same place `baseline.json` lives).
+- Retrieval: GH — the `autoqa-findings-log` per-run artifact (NOT inside
+  autoqa-reports: that artifact uploads BEFORE the gate, where the log is
+  born) or the `findings-log-store` cache; Argo — the per-host baseline PVC
+  dir (same place `baseline.json` lives).
+- Fingerprint granularity contract (feeds #37/#39): every converter must emit
+  fingerprints that survive "one fix — one disappearance". schemathesis:
+  per-operation blocks (op + kind + failure-class), NOT one run-wide hash;
+  zap: per (alert, instance pathname); crawler: capture-time dedup by
+  fingerprint with `count` (a render-loop console.error is one finding ×N,
+  not N findings — baselines and "N NEW" counts stay honest).
+- Secret redaction covers TEXT paths too: `redactTextSecrets` in redact.js
+  runs on console/pageerror messages (crawler) and monkey `where`+message —
+  an app logging its own failed `?api_key=…` fetch must not carry the secret
+  into findings/reports. Verified by selftest-http-basic.
+- Observatory API down / grade missing writes `observatory-skipped.txt` →
+  gate info `observatory-skipped` — green is distinguishable from unverified
+  (same pattern as zap-skipped #31).
 - `run-schemathesis.sh` also captures `--report ndjson` engine events
   (`schemathesis-events.ndjson`, capture-only) — fixture collection for the
   regex→structured parser migration (#36).

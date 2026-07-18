@@ -209,6 +209,8 @@ function gateCrawler() {
       "crawler",
       "info",
       `${decoCount} decorative-resource 4xx finding(s) downgraded (matched crawler-decorative-paths)`,
+      null,
+      "crawler-decorative-paths",
     );
   }
   const counts = {
@@ -621,6 +623,23 @@ const OBSERVATORY_GRADES = "A+ A A- B+ B B- C+ C C- D+ D D- F".split(" ");
 
 function gateObservatory() {
   if (!ENABLED.observatory) return;
+  // "Green" must be distinguishable from "never verified": the hosted API
+  // being down or answering without a grade leaves the tool enabled but the
+  // scan not run — surface that as info instead of silently returning.
+  if (existsSync(`${REPORTS}/observatory-skipped.txt`)) {
+    const reason = readFileSync(
+      `${REPORTS}/observatory-skipped.txt`,
+      "utf8",
+    ).trim();
+    record(
+      "observatory",
+      "info",
+      `Observatory scan did not run — ${reason}; headers were NOT verified this run`,
+      null,
+      "observatory-skipped",
+    );
+    return;
+  }
   const path = `${REPORTS}/observatory.json`;
   if (!existsSync(path)) return;
   const data = readJson(path);
@@ -769,10 +788,14 @@ if (SUMMARY_PATH) {
 // persistent dir is mounted (baseline PVC / GH cache) so history accumulates
 // per consumer. Emission must never affect the gate verdict.
 function emitFindingsLog() {
+  // QA_CONSUMER pins the identity explicitly — required once dual vantage
+  // lands (#38): the internal run hits *.svc.cluster.local while the edge run
+  // hits the public host, and vantage-set diffs need one join key.
   const consumerUrl = process.env.QA_URL || process.env.QA_BASE_URL || "";
-  let consumer = process.env.GITHUB_REPOSITORY || "";
+  let consumer = process.env.QA_CONSUMER || process.env.GITHUB_REPOSITORY || "";
   try {
-    if (consumerUrl) consumer = new URL(consumerUrl).host;
+    if (!process.env.QA_CONSUMER && consumerUrl)
+      consumer = new URL(consumerUrl).host;
   } catch {
     /* keep repository fallback */
   }
@@ -781,10 +804,30 @@ function emitFindingsLog() {
     consumer: consumer || "unknown",
     run_id: process.env.GITHUB_RUN_ID || process.env.QA_RUN_ID || "",
     sha: process.env.GITHUB_SHA || process.env.COMMIT_SHA || "",
+    // The TARGET app build under test (main-<sha> image tag on Argo runs) —
+    // "fingerprint appeared on build X, gone since build Y" is the question
+    // Phase-5 verification asks; wall-clock ts cannot answer it.
+    target_sha: process.env.QA_TARGET_SHA || "",
     event: EVENT_NAME || process.env.QA_EVENT_NAME || "local",
     vantage: process.env.QA_VANTAGE || "edge",
   };
   const rows = [];
+  // Unconditional run row: a green run with zero findings must still leave a
+  // trace, or the warehouse denominator dies — "rule X: 0 hits in 90 days"
+  // becomes indistinguishable from "no runs happened" and fp-rate/review_by
+  // decisions go blind.
+  const normalizedForCount = readJson(`${REPORTS}/findings.json`);
+  rows.push({
+    ...meta,
+    kind: "run",
+    verdict: findings.some((f) => f.severity === "fail" && FAIL_ON[f.tool])
+      ? "fail"
+      : "pass",
+    gate_rows: findings.length,
+    finding_rows: Array.isArray(normalizedForCount)
+      ? normalizedForCount.length
+      : 0,
+  });
   for (const f of findings) {
     rows.push({
       ...meta,
@@ -796,9 +839,8 @@ function emitFindingsLog() {
       message: (f.message || "").slice(0, 300),
     });
   }
-  const normalized = readJson(`${REPORTS}/findings.json`);
-  if (Array.isArray(normalized)) {
-    for (const f of normalized) {
+  if (Array.isArray(normalizedForCount)) {
+    for (const f of normalizedForCount) {
       rows.push({
         ...meta,
         kind: "finding",
@@ -809,7 +851,6 @@ function emitFindingsLog() {
       });
     }
   }
-  if (rows.length === 0) return;
   const ndjson = rows.map((r) => JSON.stringify(r)).join("\n") + "\n";
   writeFileSync(`${REPORTS}/findings-log.ndjson`, ndjson);
   const persistDir = process.env.QA_FINDINGS_LOG_DIR || "";
