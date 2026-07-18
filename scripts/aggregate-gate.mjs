@@ -386,8 +386,12 @@ function classifySchemathesis(out) {
 // The ERRORS section prints one underscore-ruled block per errored operation.
 // A client-side read timeout there is the run's own fuzz storm saturating the
 // backend (verified: the same endpoint answers in ~150ms outside the burst),
-// not an API that never answers — non-blocking transient per issue #34.
-// Connection refused/reset/DNS blocks stay blocking: those are origin deaths.
+// not an API that never answers — non-blocking transient per issue #34. The
+// same applies to a mid-stream truncation ("Connection broken ... invalid
+// chunk" / "Response ended prematurely"): the server DID answer and started
+// streaming, then the saturated worker cut the connection — outside the burst
+// the endpoint streams clean and the backend logs no error. Connection
+// refused/reset/DNS blocks stay blocking: those are origin deaths.
 function timeoutErrorCount(out) {
   const errIdx = out.search(/={6,}\s*ERRORS\s*={6,}/);
   if (errIdx === -1) return 0;
@@ -399,7 +403,9 @@ function timeoutErrorCount(out) {
     "\n",
   );
   const blocks = section.split(/^_{3,}.*_{3,}$/m).slice(1);
-  return blocks.filter((b) => /timed out/i.test(b)).length;
+  return blocks.filter((b) =>
+    /timed out|response ended prematurely|invalid chunk/i.test(b),
+  ).length;
 }
 
 function gateSchemathesis() {
@@ -427,7 +433,7 @@ function gateSchemathesis() {
       record(
         "schemathesis",
         "info",
-        `${timeouts} read-timeout(s) under the run's own fuzz load (self-inflicted transient, non-blocking — re-verify the endpoint outside the burst)`,
+        `${timeouts} read-timeout/truncation error(s) under the run's own fuzz load (self-inflicted transient, non-blocking — re-verify the endpoint outside the burst)`,
         null,
         "fuzz-read-timeout",
       );

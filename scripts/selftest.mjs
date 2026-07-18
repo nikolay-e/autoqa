@@ -536,6 +536,49 @@ console.log(
     "read-timeout surfaced as a non-blocking transient",
   );
 
+  const truncDir = freshReports();
+  writeFileSync(
+    join(truncDir, "schemathesis.txt"),
+    [
+      " 🚫  Fuzzing (in 504.10s)",
+      "     ✅ 70 passed  🚫  2 errors",
+      "==================================== ERRORS ====================================",
+      "___________________________ GET /Karaoke/{trackId}/vocals ___________________________",
+      "Network Error",
+      "",
+      "Connection broken. The server declared chunked encoding but sent an invalid chunk",
+      "",
+      "    Response ended prematurely",
+      "",
+      "___________________________ POST /v1/sessions ___________________________",
+      "Network Error",
+      "",
+      "Connection refused",
+      "",
+      "=================================== SUMMARY ====================================",
+      "",
+      "Test cases:",
+      "  742 generated, 1 skipped",
+      "",
+      "================== 2 errors, 3 warnings in 63.34s ==================",
+      "",
+    ].join("\n"),
+  );
+  const truncRun = runNode("aggregate-gate.mjs", {
+    QA_REPORTS_DIR: truncDir,
+    QA_GATE_CRAWLER_ENABLED: "false",
+    QA_GATE_SCHEMATHESIS_ENABLED: "true",
+    QA_GATE_SCHEMATHESIS_FAIL: "true",
+  });
+  ok(
+    truncRun.code === 1,
+    "connection-refused error still gates next to a truncation transient",
+  );
+  ok(
+    /1 errored case/.test(truncRun.out),
+    "mid-stream truncation excluded from blocking count",
+  );
+
   const timeoutOnlyDir = freshReports();
   writeFileSync(
     join(timeoutOnlyDir, "schemathesis.txt"),
