@@ -109,11 +109,17 @@ function ruleHits(rows, days) {
 
 function fingerprintAge(rows) {
   const byKey = new Map();
+  // Latest run per consumer comes from kind:"run" rows — a fully green run
+  // emits no finding rows, and without it a fingerprint fixed by that run
+  // would still read as live.
   const latestRun = new Map();
   for (const r of rows) {
-    if (r.kind !== "finding" || !r.fingerprint) continue;
+    if (r.kind !== "run" && r.kind !== "finding") continue;
     if ((latestRun.get(r.consumer) || "") < r.ts)
       latestRun.set(r.consumer, r.ts);
+  }
+  for (const r of rows) {
+    if (r.kind !== "finding" || !r.fingerprint) continue;
     const key = `${r.consumer} ${r.fingerprint}`;
     const e = byKey.get(key) || {
       consumer: r.consumer,

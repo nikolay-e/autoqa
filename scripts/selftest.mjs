@@ -812,6 +812,10 @@ console.log(
     fpAge.code === 0 && /fp-wh-1/.test(fpAge.out),
     "warehouse fingerprint-age query runs and lists the tracked fingerprint",
   );
+  ok(
+    /fp-wh-1\s+\d+\s+\d+\s+yes\b/.test(fpAge.out),
+    "fingerprint present in the latest run reads live",
+  );
   const fpRate = runNode("warehouse.mjs", {}, [
     "fp-rate",
     join(persistDir, "findings-log.ndjson"),
@@ -833,6 +837,7 @@ console.log(
     QA_REPORTS_DIR: emptyDir,
     QA_URL: "https://warehouse.selftest",
     QA_GATE_CRAWLER_ENABLED: "false",
+    QA_FINDINGS_LOG_DIR: persistDir,
   });
   const emptyLog = readFileSync(join(emptyDir, "findings-log.ndjson"), "utf8")
     .trim()
@@ -844,6 +849,17 @@ console.log(
       emptyLog[0].verdict === "pass" &&
       emptyLog[0].gate_rows === 0,
     "green run with zero findings still emits exactly the run row",
+  );
+
+  // The green run above emitted only a run row — the latest-run marker must
+  // come from it, flipping the previously-live fingerprint to fixed.
+  const fpAgeAfterGreen = runNode("warehouse.mjs", {}, [
+    "fingerprint-age",
+    join(persistDir, "findings-log.ndjson"),
+  ]);
+  ok(
+    /fp-wh-1\s+\d+\s+\d+\s+no\b/.test(fpAgeAfterGreen.out),
+    "fingerprint absent from a later green run reads fixed (live=no)",
   );
 }
 

@@ -300,6 +300,12 @@ async function crawlPage(page, path) {
       timeout: 60000,
     });
 
+    // A 4xx/5xx main navigation renders an ERROR page (the app's error view,
+    // Cloudflare's challenge/52x interstitial, an ingress 503) — auditing it
+    // attributes the error page's axe violations, console noise and content to
+    // the app path (live case: a CF challenge page's meta-refresh reported as
+    // a critical app a11y bug). The broken-link finding is the one real
+    // signal; stop here, same semantics as the off-origin skip below.
     if (!response || response.status() >= 400) {
       const status = response ? response.status() : "no response";
       results.brokenLinks.push({
@@ -307,6 +313,8 @@ async function crawlPage(page, path) {
         status,
         fingerprint: fingerprint("broken", String(status), path),
       });
+      console.log(`  ${status} ${path} | error page — not audited`);
+      return;
     }
 
     // A navigation whose FINAL url is off-origin (OAuth provider, SSO, payment

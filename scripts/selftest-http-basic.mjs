@@ -88,8 +88,17 @@ function runCrawler(env) {
 
 const server = createServer((req, res) => {
   if (req.headers.authorization !== EXPECTED_AUTH) {
-    res.writeHead(401, { "WWW-Authenticate": 'Basic realm="autoqa"' });
-    res.end("Unauthorized");
+    res.writeHead(401, {
+      "WWW-Authenticate": 'Basic realm="autoqa"',
+      "Content-Type": "text/html",
+    });
+    // Challenge-page-like markup, deliberately full of axe violations
+    // (no lang, meta-refresh, no title): none of it may be attributed to
+    // the app path — error pages are not audited.
+    res.end(
+      '<html><head><meta http-equiv="refresh" content="5"></head>' +
+        "<body>Unauthorized</body></html>",
+    );
     return;
   }
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -142,6 +151,16 @@ check(
   "401 reported as broken link",
   (noCreds.findings?.brokenLinks || []).some((b) => b.status === 401),
   JSON.stringify(noCreds.findings?.brokenLinks),
+);
+check(
+  "error page is not audited (no axe findings from the 401 page)",
+  (noCreds.findings?.axeViolations || []).length === 0,
+  JSON.stringify(noCreds.findings?.axeViolations),
+);
+check(
+  "error page not counted as visited",
+  noCreds.findings?.pagesVisited === 0,
+  `pagesVisited=${noCreds.findings?.pagesVisited}`,
 );
 
 server.close();
