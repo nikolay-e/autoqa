@@ -233,9 +233,9 @@ runs:
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: /tmp/autoqa-findings-log
-        key: autoqa-findings-log-${{ github.repository }}-${{ github.run_id }}
+        key: autoqa-findings-log-v2-${{ github.repository }}-${{ github.run_id }}
         restore-keys: |
-          autoqa-findings-log-${{ github.repository }}-
+          autoqa-findings-log-v2-${{ github.repository }}-
 
     - name: Setup Node.js (for Playwright auth)
       if: inputs.auth-url != '' && inputs.auth-mode == 'playwright'
@@ -519,7 +519,7 @@ runs:
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: /tmp/autoqa-findings-log
-        key: autoqa-findings-log-${{ github.repository }}-${{ github.run_id }}
+        key: autoqa-findings-log-v2-${{ github.repository }}-${{ github.run_id }}
 
     - name: Enforce gate verdict
       if: always()
