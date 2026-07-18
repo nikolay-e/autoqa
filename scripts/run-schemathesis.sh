@@ -99,7 +99,12 @@ for p in "${PATHS[@]}"; do
 done
 
 echo "Running Schemathesis..."
-st "${ST_ARGS[@]}" 2>&1 | tee /tmp/qa-reports/schemathesis.txt
+# st exits non-zero on findings; under `set -e -o pipefail` that would abort
+# this script right here — before the scrub block below — leaving the
+# unscrubbed events file on disk exactly when auth+findings are present. The
+# `|| true` keeps the exit code from killing the script; the gate re-derives
+# pass/fail from schemathesis.txt anyway.
+st "${ST_ARGS[@]}" 2>&1 | tee /tmp/qa-reports/schemathesis.txt || true
 
 # --output-sanitize cleans the human report but NOT the ndjson events stream:
 # the transport-level request Authorization header (the live Bearer token)

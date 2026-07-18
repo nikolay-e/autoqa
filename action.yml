@@ -454,6 +454,15 @@ runs:
         QA_URL: ${{ inputs.url }}
         COMMIT_SHA: ${{ github.sha }}
 
+    # Defense in depth: run-schemathesis.sh already scrubs the events file, but
+    # a mid-run abort (OOM/preemption) could leave an unscrubbed remnant that
+    # the reports upload below would ship. Scrub again, unconditionally, right
+    # before the upload — the token must never reach the artifact.
+    - name: Scrub schemathesis events before upload
+      if: always()
+      shell: bash
+      run: node ${{ github.action_path }}/scripts/redact-events.mjs /tmp/qa-reports/schemathesis-events.ndjson || rm -f /tmp/qa-reports/schemathesis-events.ndjson
+
     - name: Upload QA reports
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

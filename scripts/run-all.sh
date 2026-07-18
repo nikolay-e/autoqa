@@ -188,6 +188,14 @@ if [ "${QA_MONKEY_ENABLED}" = "true" ]; then
   run_tool "monkey" node "${AUTOQA_HOME}/tools/crawler/monkey.js"
 fi
 
+# Defense in depth: run-schemathesis.sh scrubs its events file, but a mid-run
+# abort could leave an unscrubbed remnant. Scrub again unconditionally before
+# anything downstream can copy it out. Deleting on scrub error fails safe.
+if [ -f "${REPORTS}/schemathesis-events.ndjson" ]; then
+  node "${AUTOQA_HOME}/scripts/redact-events.mjs" "${REPORTS}/schemathesis-events.ndjson" \
+    || rm -f "${REPORTS}/schemathesis-events.ndjson"
+fi
+
 # --- normalize + COMPLETE report (always-on, advisory — never gates) ----------
 run_tool "normalize-findings" node "${AUTOQA_HOME}/scripts/normalize-findings.mjs"
 run_tool "qa-report" node "${AUTOQA_HOME}/scripts/generate-qa-report.mjs"
