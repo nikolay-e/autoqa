@@ -529,6 +529,41 @@ when Cloudflare decides to challenge. Fix: `crawl.js` drops CSP-violation
 console messages mentioning `/cdn-cgi/challenge-platform/` at capture time —
 it is Cloudflare's reserved injection namespace, never app content.
 
+## Error pages (4xx/5xx main navigation) are not audited (2026-07-18)
+
+`crawl.js` records the broken-link finding and STOPS for any main navigation
+that answers >=400 — no axe, no content extraction, no link following, not
+counted in pagesVisited (same semantics as the off-origin skip). Rationale:
+the rendered document is an ERROR page (app error view, CF challenge/52x
+interstitial, ingress 503) and auditing it attributes its markup to the app
+path. Live case: hidden-gem's GH crawl carried a persistent "critical
+meta-refresh a11y" finding that was actually the Cloudflare challenge page on
+two 403'd routes — misdiagnosed into its own issue (hidden-gem#5, closed as
+dup of the CF-block issue #1). The 503-rollout-window a11y noise (previous
+section) dies at the source too. Covered by selftest-http-basic Phase 2
+(HTML 401 page full of axe violations → zero axe findings).
+
+## Consumer-sweep triage: check the run's image pin age FIRST
+
+2026-07-18 sweep: lingua-quiz gate-red (read-timeout errored case),
+pflegescore/nikolay-eremeev-com monkey ERR_ABORTED noise, vocontrol
+CSP-challenge flaps — ALL were runs on a stale image pin predating the fixes
+that already closed those classes (#34, 73d5344, 8d347e7). Tell-tale: the
+gate message wording differs from current aggregate-gate.mjs (e.g. old
+"network errors / timeouts" vs current "network errors — the API never
+answered"). Before diagnosing a consumer red, diff the run's gate wording /
+timestamp against the gitops template pin bump date; a superseded run needs
+no action beyond the pin bump verification.
+
+## Expected-401 auth probes flap the baseline (vocontrol)
+
+An anonymous crawl of an app that probes `/api/auth/me` records the 401 as a
+network-error finding; CF-challenge intermittency makes it flap
+new→fixed→new (challenged run: app JS never executes → no probe → "fixed").
+Consumer-side fix: add the probe path to `exclude-urls` in the app's gitops
+autoqa sensor (done for vocontrol 2026-07-18). Not an autoqa bug — 401 is
+the app's correct answer; the crawl-side exclusion is the deterministic fix.
+
 ## Native confirm() dialogs on consumer pages stall the crawler login
 
 wealth-as-code's /login pops a native `confirm("Доступна новая версия.
