@@ -331,11 +331,22 @@ async function crawlPage(page, path) {
 
     await page.waitForTimeout(WAIT_MS);
 
+    // A "report-only" violation when the app sent NO
+    // Content-Security-Policy-Report-Only header is an intermediary's policy:
+    // Cloudflare bot management injects a report-only script-src policy (no
+    // 'self') on runs it decides to instrument, flagging the app's own
+    // legitimate scripts. Only the app's own report-only rollout is signal.
+    const appSentReportOnly =
+      response.headers()["content-security-policy-report-only"] !== undefined;
+    const appCspIssues = appSentReportOnly
+      ? cspIssues
+      : cspIssues.filter((i) => !/policy is report-only/i.test(i.message));
+
     results.pagesVisited++;
     mergeUnique(results.jsErrors, pageErrors);
     mergeUnique(results.networkErrors, networkFailures);
     results.consoleWarnings.push(...warnings);
-    mergeUnique(results.cspViolations, cspIssues);
+    mergeUnique(results.cspViolations, appCspIssues);
     mergeUnique(results.mixedContent, mixed);
 
     try {
@@ -446,7 +457,7 @@ async function crawlPage(page, path) {
     const axeCount = results.axeViolations.filter(
       (v) => v.path === path,
     ).length;
-    const cspCount = cspIssues.length;
+    const cspCount = appCspIssues.length;
     const mixedCount = mixed.length;
     console.log(
       `  ${status} ${path} | errors:${errorCount} axe:${axeCount} csp:${cspCount} mixed:${mixedCount} links:${links.length}`,
