@@ -483,6 +483,23 @@ sha, event, vantage}`. Emission is try/catch-wrapped — it can never affect
   scrub error so a token can never ship. Covered by selftest Phase 4. When
   adding any new `--report`/artifact that echoes requests, re-check the leak.
 
+## Monkey/crawler 5xx during a single-replica rollout window (2026-07-18)
+
+A consumer autoqa run that RACES the target app's own rollout can record
+`503` http-5xx (monkey) plus downstream a11y findings (crawler axe-ing the
+`503` error page: missing `<title>`/`lang`/landmarks). Tell-tale: the run
+targeted a fresh deploy, the pages return 200 with correct markup on a live
+re-check minutes later, and the NEXT run on the settled pod passes. Root cause
+is consumer-side: a **single-replica** Deployment has a no-ready-backend gap on
+every rollout (the run's 12m wait-for-SHA can pass on a CF-cached asset while
+the origin is still flapping). This is NOT an autoqa bug — it is the monkey
+analog of the schemathesis CF-edge-transient (#29), and the real fix is
+consumer redundancy (≥2 replicas + PDB / `maxUnavailable:0`), which closes it
+for real users too. File it in the consumer repo (did so: hidden-gem#6 for the
+4wldb run), not here. Before classifying, ALWAYS: (1) live-curl the flagged
+pages for status+`<title>`, (2) `kubectl get deploy -n <ns>` replica count +
+pod age vs the failing run's timestamp.
+
 ## Schemathesis 429 + self-inflicted read-timeouts are non-blocking (#34, 2026-07-17)
 
 Two more `classifySchemathesis`/error-gate downgrades, same FP-vs-catch-value trade
