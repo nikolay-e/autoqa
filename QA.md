@@ -461,17 +461,27 @@ sha, event, vantage}`. Emission is try/catch-wrapped — it can never affect
 - Observatory API down / grade missing writes `observatory-skipped.txt` →
   gate info `observatory-skipped` — green is distinguishable from unverified
   (same pattern as zap-skipped #31).
-- `run-schemathesis.sh` also captures `--report ndjson` engine events
-  (`schemathesis-events.ndjson`, capture-only) — fixture collection for the
-  regex→structured parser migration (#36). **CRITICAL:** schemathesis
-  `--output-sanitize` cleans the human report but NOT the ndjson events
-  stream — the transport-level request `Authorization` header (the live
-  Bearer token) lands there verbatim (confirmed on a yay-tsa run: 684×). So
-  `scripts/redact-events.mjs` scrubs the file (secret-named keys at any depth
-  - Bearer/Basic + secret query params) before it leaves the container, and
-    the file is DELETED if the scrubber errors — an unscrubbed token can never
-    ship. Covered by selftest Phase 4. When adding any new `--report`/artifact
-    that echoes requests, re-check it for the same leak.
+- **schemathesis `--report ndjson` events capture is OPT-IN**
+  (`QA_SCHEMATHESIS_EVENTS=true`, default off): the stream is one event PER
+  TEST CASE, so a real run is hundreds of MB (536MB on a 7646-case yay-tsa
+  run) — far too heavy to ship in every consumer's artifact every run. It only
+  exists to collect a few real fixtures for the regex→structured parser
+  migration (#36); enable on ONE run when collecting, then turn off.
+- **Token-leak in the events stream (multi-bug, all closed):**
+  `--output-sanitize` cleans the human report but NOT the ndjson events — the
+  transport-level request `Authorization` header (the live Bearer token) lands
+  there verbatim (confirmed 684× on a yay-tsa run). `redact-events.mjs` scrubs
+  it (secret-named keys at any depth, Bearer/Basic, secret query params),
+  STREAMING line-by-line (a 536MB file exceeds Node's `ERR_STRING_TOO_LONG`
+  ~512MB `readFileSync` limit — the first version crashed and the fail-safe
+  deleted the fixtures every auth run). Three traps that made this fragile,
+  each fixed: (1) `run-schemathesis.sh` `set -e -o pipefail` aborted at
+  `st | tee` on findings BEFORE the scrub — added `|| true`; (2) whole-file
+  read crashed on size — streaming; (3) a mid-run abort could leave an
+  unscrubbed remnant — a defense-in-depth scrub runs again before the reports
+  upload (action.yml) and before the gate (run-all.sh), deleting the file on
+  scrub error so a token can never ship. Covered by selftest Phase 4. When
+  adding any new `--report`/artifact that echoes requests, re-check the leak.
 
 ## Schemathesis 429 + self-inflicted read-timeouts are non-blocking (#34, 2026-07-17)
 

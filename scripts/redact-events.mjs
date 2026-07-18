@@ -5,9 +5,19 @@
 // transport-level events stream: the raw request Authorization header (the
 // live Bearer token) lands there verbatim. Walk every JSON line, redact any
 // sensitive-named key's value at any depth, and regex-scrub Bearer/Basic
-// tokens and secret query params in remaining strings. Fail-open on unparseable
-// lines by dropping them (never emit a line we could not scrub).
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+// tokens and secret query params in remaining strings.
+//
+// STREAMING: a real run's events file is hundreds of MB (one event per test
+// case, 7000+ cases) — readFileSync into one string throws ERR_STRING_TOO_LONG
+// past ~512MB. Read line-by-line, write to a temp file, atomically replace.
+// Unparseable lines are dropped (never emit a line we could not scrub).
+import {
+  createReadStream,
+  createWriteStream,
+  renameSync,
+  existsSync,
+} from "node:fs";
+import { createInterface } from "node:readline";
 
 const path = process.argv[2] || "/tmp/qa-reports/schemathesis-events.ndjson";
 if (!existsSync(path)) process.exit(0);
@@ -35,18 +45,34 @@ function scrub(value, keyIsSecret) {
   return value;
 }
 
-const outLines = [];
+const tmp = `${path}.scrubbed`;
+const outStream = createWriteStream(tmp);
+const rl = createInterface({
+  input: createReadStream(path, "utf8"),
+  crlfDelay: Infinity,
+});
+
+let kept = 0;
 let dropped = 0;
-for (const line of readFileSync(path, "utf8").split("\n")) {
-  if (!line.trim()) continue;
+rl.on("line", (line) => {
+  if (!line.trim()) return;
   try {
-    outLines.push(JSON.stringify(scrub(JSON.parse(line), false)));
+    outStream.write(JSON.stringify(scrub(JSON.parse(line), false)) + "\n");
+    kept++;
   } catch {
     dropped++;
   }
-}
-writeFileSync(path, outLines.join("\n") + (outLines.length ? "\n" : ""));
-console.log(
-  `redact-events: scrubbed ${outLines.length} event line(s)` +
-    (dropped ? `, dropped ${dropped} unparseable` : ""),
-);
+});
+rl.on("close", () => {
+  outStream.end(() => {
+    renameSync(tmp, path);
+    console.log(
+      `redact-events: scrubbed ${kept} event line(s)` +
+        (dropped ? `, dropped ${dropped} unparseable` : ""),
+    );
+  });
+});
+rl.on("error", (err) => {
+  console.error(`redact-events: read error — ${err.message}`);
+  process.exit(1);
+});

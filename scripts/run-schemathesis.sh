@@ -56,14 +56,20 @@ ST_ARGS=(
   run /tmp/qa-reports/openapi.json
   --url "${ST_BASE_URL}"
   --checks all
-  # Capture-only structured output (engine events, sanitized by default):
-  # nothing consumes it yet — it accumulates real fixtures so the gate's
-  # text-regex parsing can be diffed against structured ingestion and then
-  # replaced (autoqa#36). The human-readable text tee below stays the gate's
-  # source of truth until that parity diff is done.
-  --report ndjson
-  --report-ndjson-path /tmp/qa-reports/schemathesis-events.ndjson
 )
+
+# Structured event capture is OPT-IN (QA_SCHEMATHESIS_EVENTS=true): the ndjson
+# stream is one event PER TEST CASE, so a real run is hundreds of MB (536MB on
+# a 7646-case yay-tsa run) — far too heavy to ship in every consumer's artifact
+# on every run. It exists only to collect a few real fixtures for the
+# regex->structured parser migration (autoqa#36); enable it on ONE run when
+# collecting, then turn it back off. The gate's source of truth is the text tee.
+if [ "${QA_SCHEMATHESIS_EVENTS:-false}" = "true" ]; then
+  ST_ARGS+=(
+    --report ndjson
+    --report-ndjson-path /tmp/qa-reports/schemathesis-events.ndjson
+  )
+fi
 
 # Both auth styles ride the one Authorization header, so they are mutually
 # exclusive — a Bearer token (app-level auth) wins over proxy-level Basic.
