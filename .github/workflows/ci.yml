@@ -19,6 +19,14 @@ jobs:
         with:
           node-version: "22"
       - run: cd tools/crawler && npm ci
+      # Guard against stray NUL/control bytes in source (a NUL in warehouse.mjs
+      # made git treat it as binary and blinded diff review). prettier does not
+      # catch this — a control byte inside a string passes formatting.
+      - name: No control bytes in source
+        run: |
+          if grep -rlP '[\x00-\x08\x0e-\x1f]' --include='*.mjs' --include='*.js' --include='*.sh' --exclude-dir=node_modules scripts lib tools; then
+            echo "control byte(s) found in source — see files above"; exit 1
+          fi
       - run: npx prettier --check "**/*.{js,mjs,json,yml,yaml,md}"
       - run: node --check tools/crawler/crawl.js
       - run: node --check tools/crawler/monkey.js

@@ -804,6 +804,22 @@ console.log(
     /fuzz-read-timeout\s+2\s+warehouse\.selftest/.test(hits.out),
     "rule-hits counts both runs for the firing rule",
   );
+  const fpAge = runNode("warehouse.mjs", {}, [
+    "fingerprint-age",
+    join(persistDir, "findings-log.ndjson"),
+  ]);
+  ok(
+    fpAge.code === 0 && /fp-wh-1/.test(fpAge.out),
+    "warehouse fingerprint-age query runs and lists the tracked fingerprint",
+  );
+  const fpRate = runNode("warehouse.mjs", {}, [
+    "fp-rate",
+    join(persistDir, "findings-log.ndjson"),
+  ]);
+  ok(
+    fpRate.code === 0 && /schemathesis/.test(fpRate.out),
+    "warehouse fp-rate query runs",
+  );
   ok(
     logRows.some((r) => r.kind === "run" && r.verdict === "pass"),
     "every emission includes a kind:run row with the verdict",

@@ -210,12 +210,6 @@ async function crawlPage(page, path) {
   if (isExcluded(path)) return;
   visited.add(path);
 
-  // crawlPage re-registers listeners on the shared page object every visit;
-  // stale ones from previous pages would keep firing into dead closures.
-  for (const ev of ["pageerror", "console", "request", "response"]) {
-    page.removeAllListeners(ev);
-  }
-
   const pageErrors = [];
   const networkFailures = [];
   const warnings = [];
