@@ -18,18 +18,21 @@ import {
   existsSync,
 } from "node:fs";
 import { createInterface } from "node:readline";
+import { BEARER_SECRET_RE, QUERY_SECRET_RE } from "../lib/redact-patterns.mjs";
 
 const path = process.argv[2] || "/tmp/qa-reports/schemathesis-events.ndjson";
 if (!existsSync(path)) process.exit(0);
 
+// Object-key redaction (walked at any depth in the ndjson) covers header/field
+// NAMES, a superset of the query-param vocabulary (cookie/set-cookie/x-api-key
+// are not query params) — so it stays local to this scrubber.
 const SECRET_KEY_RE =
   /^(authorization|cookie|set-cookie|proxy-authorization|x-api-key|api_key|apikey|token|access_token|refresh_token|id_token|password|passwd|secret|session|sessionid|sid|sig|signature)$/i;
-const BEARER_RE = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/g;
-const QUERY_RE =
-  /([?&](?:api_key|apikey|access_key|token|access_token|auth_token|refresh_token|id_token|key|secret|password|passwd|auth|authorization|session|session_id|sessionid|sid|sig|signature)=)[^&\s"'`]+/gi;
 
 function scrubString(s) {
-  return s.replace(BEARER_RE, "$1 REDACTED").replace(QUERY_RE, "$1REDACTED");
+  return s
+    .replace(BEARER_SECRET_RE, "$1 REDACTED")
+    .replace(QUERY_SECRET_RE, "$1REDACTED");
 }
 
 function scrub(value, keyIsSecret) {

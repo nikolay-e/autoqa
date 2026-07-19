@@ -1,31 +1,11 @@
-const SECRET_QUERY_PARAMS = new Set([
-  "api_key",
-  "apikey",
-  "access_key",
-  "token",
-  "access_token",
-  "auth_token",
-  "refresh_token",
-  "id_token",
-  "key",
-  "secret",
-  "password",
-  "passwd",
-  "auth",
-  "authorization",
-  "session",
-  "session_id",
-  "sessionid",
-  "sid",
-  "sig",
-  "signature",
-]);
+import {
+  SECRET_QUERY_PARAM_SET,
+  QUERY_SECRET_RE,
+  BEARER_SECRET_RE,
+} from "../../lib/redact-patterns.mjs";
 
-const TEXT_QUERY_SECRET_RE = new RegExp(
-  `([?&](?:${[...SECRET_QUERY_PARAMS].join("|")})=)[^&\\s"'\`]+`,
-  "gi",
-);
-const TEXT_AUTH_SECRET_RE = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/g;
+const TEXT_QUERY_SECRET_RE = QUERY_SECRET_RE;
+const TEXT_AUTH_SECRET_RE = BEARER_SECRET_RE;
 
 // For free-form text (console messages, page errors, page URLs used as
 // locations): an app that logs its own failed fetch URL or auth header would
@@ -46,7 +26,7 @@ export function redactUrlSecrets(url) {
   }
   let redacted = false;
   for (const name of parsed.searchParams.keys()) {
-    if (SECRET_QUERY_PARAMS.has(name.toLowerCase())) {
+    if (SECRET_QUERY_PARAM_SET.has(name.toLowerCase())) {
       parsed.searchParams.set(name, "REDACTED");
       redacted = true;
     }
