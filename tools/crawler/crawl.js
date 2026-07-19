@@ -66,7 +66,6 @@ const results = {
   axeViolations: [],
   axeErrors: [],
   brokenLinks: [],
-  consoleWarnings: [],
   cspViolations: [],
   mixedContent: [],
 };
@@ -212,7 +211,6 @@ async function crawlPage(page, path) {
 
   const pageErrors = [];
   const networkFailures = [];
-  const warnings = [];
   const cspIssues = [];
   const mixed = [];
 
@@ -252,9 +250,6 @@ async function crawlPage(page, path) {
           fingerprint: fingerprint("js-error", normalizeJsError(text), path),
         });
       }
-    }
-    if (type === "warning") {
-      warnings.push({ path, warning: text });
     }
   });
 
@@ -345,7 +340,6 @@ async function crawlPage(page, path) {
     results.pagesVisited++;
     mergeUnique(results.jsErrors, pageErrors);
     mergeUnique(results.networkErrors, networkFailures);
-    results.consoleWarnings.push(...warnings);
     mergeUnique(results.cspViolations, appCspIssues);
     mergeUnique(results.mixedContent, mixed);
 
