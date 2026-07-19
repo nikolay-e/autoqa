@@ -17,7 +17,7 @@ const REPORT_PATH = "/tmp/qa-reports/authz-matrix.json";
 const SUMMARY_PATH = process.env.GITHUB_STEP_SUMMARY || "";
 
 const ACCEPTABLE_FORBIDDEN = new Set([401, 403, 404]);
-const TOKEN_FIELDS = ["AccessToken", "access_token", "token"];
+const TOKEN_FIELDS = ["AccessToken", "access_token", "token", "jwt"];
 
 function extractToken(json) {
   for (const field of TOKEN_FIELDS) {
