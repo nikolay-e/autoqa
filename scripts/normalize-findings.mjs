@@ -18,6 +18,7 @@ import {
   validationErrors,
   normalizeSeverity,
   severityFromAxeImpact,
+  OBSERVATORY_GRADES,
 } from "../lib/finding-schema.mjs";
 
 const REPORTS =
@@ -151,8 +152,8 @@ const converters = [
     const data = readJson("observatory.json");
     if (!data || !data.grade) return;
     const grade = String(data.grade);
-    const rank = "A+ A A- B+ B B- C+ C C- D+ D D- F".split(" ").indexOf(grade);
-    const bMinus = "A+ A A- B+ B B- C+ C C- D+ D D- F".split(" ").indexOf("B-");
+    const rank = OBSERVATORY_GRADES.indexOf(grade);
+    const bMinus = OBSERVATORY_GRADES.indexOf("B-");
     if (rank === -1 || rank <= bMinus) return;
     const severity = grade.startsWith("F")
       ? "high"

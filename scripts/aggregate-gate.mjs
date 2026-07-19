@@ -24,6 +24,7 @@ import {
   mkdirSync,
 } from "node:fs";
 import { GATE_RULES } from "../lib/gate-rules.mjs";
+import { OBSERVATORY_GRADES } from "../lib/finding-schema.mjs";
 
 const REPORTS = process.env.QA_REPORTS_DIR || "/tmp/qa-reports";
 const EVENT_NAME = process.env.GITHUB_EVENT_NAME || "";
@@ -624,8 +625,6 @@ function gateMechanical() {
     );
   }
 }
-
-const OBSERVATORY_GRADES = "A+ A A- B+ B B- C+ C C- D+ D D- F".split(" ");
 
 function gateObservatory() {
   if (!ENABLED.observatory) return;
