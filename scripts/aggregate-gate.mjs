@@ -326,7 +326,18 @@ function classifySchemathesis(out) {
     summaryIdx === -1 ? out.length : summaryIdx,
   );
   // Blocks are delimited by underscore-ruled headers: "____ GET /path ____".
-  const rawBlocks = section.split(/^_{3,}.*_{3,}$/m).slice(1);
+  // The Stateful phase breaks that convention: one "____ Stateful tests ____"
+  // header holds several numbered "N. Test Case ID: xxx" cases, while the
+  // summary's "X found" counts every case — without re-splitting, a section of
+  // all-transient stateful cases parses as one block, never reconciles against
+  // X, and the fallback blocks the full count (issue #44).
+  const rawBlocks = section
+    .split(/^_{3,}.*_{3,}$/m)
+    .slice(1)
+    .flatMap((block) => {
+      const cases = block.split(/^\d+\.\s+Test Case ID:.*$/m);
+      return cases.length > 2 ? cases.slice(1) : [block];
+    });
   let preServlet = 0;
   let edgeTransient = 0;
   let cleanReject = 0;
